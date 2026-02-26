@@ -15,18 +15,22 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { Platform } from 'react-native';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { createOrUpdateUserProfile } from '../services/userService';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 
-const { width, height } = Dimensions.get('window');
+// Google Sign-In is native-only — skip import on web
+let GoogleSignin = null;
+if (Platform.OS !== 'web') {
+  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+  GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'PLACEHOLDER_WEB_CLIENT_ID',
+  });
+}
 
-// Configure Google Sign-In on module load
-GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'PLACEHOLDER_WEB_CLIENT_ID',
-});
+const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
@@ -43,6 +47,10 @@ export default function LoginScreen({ navigation }) {
   }, []);
 
   const handleGoogleSignIn = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Not Available', 'Google Sign-In is only available on mobile devices.');
+      return;
+    }
     setLoading(true);
     try {
       await GoogleSignin.hasPlayServices();
