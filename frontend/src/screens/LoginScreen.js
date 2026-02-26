@@ -1,6 +1,6 @@
 // src/screens/LoginScreen.js
 // Alchemy AI — Login / Auth Screen
-// Handles Google OAuth flow (stubbed for Sprint 1, ready for real credentials)
+// Real Firebase Google Sign-In via @react-native-google-signin
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -15,30 +15,18 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { auth } from '../../firebaseConfig';
+import { createOrUpdateUserProfile } from '../services/userService';
 import { Colors, Typography, Spacing, Radius } from '../theme';
-
-// Required for Google OAuth redirect handling
-WebBrowser.maybeCompleteAuthSession();
 
 const { width, height } = Dimensions.get('window');
 
-// ─── Google OAuth Config ───────────────────────────────────────────────────
-// TODO Sprint 2: Replace with real credentials from Google Cloud Console
-// 1. Go to https://console.cloud.google.com/
-// 2. Create OAuth 2.0 credentials for iOS + Android
-// 3. Paste your client IDs below
-const GOOGLE_CLIENT_ID_IOS     = 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com';
-const GOOGLE_CLIENT_ID_ANDROID = 'YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com';
-const GOOGLE_CLIENT_ID_WEB     = 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
-
-const discovery = {
-  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  tokenEndpoint:         'https://oauth2.googleapis.com/token',
-  revocationEndpoint:    'https://oauth2.googleapis.com/revoke',
-};
-// ──────────────────────────────────────────────────────────────────────────
+// Configure Google Sign-In on module load
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'PLACEHOLDER_WEB_CLIENT_ID',
+});
 
 export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
@@ -54,53 +42,43 @@ export default function LoginScreen({ navigation }) {
     ]).start();
   }, []);
 
-  // Build redirect URI automatically from Expo
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
-
-  // Google OAuth request
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId:    GOOGLE_CLIENT_ID_WEB, // swap per platform as needed
-      redirectUri,
-      scopes:      ['openid', 'profile', 'email'],
-      responseType: AuthSession.ResponseType.Token,
-    },
-    discovery
-  );
-
-  // Handle OAuth response
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { access_token } = response.params;
-      handleAuthSuccess(access_token);
-    } else if (response?.type === 'error') {
-      Alert.alert('Authentication Error', 'Google sign-in failed. Please try again.');
-      setLoading(false);
-    }
-  }, [response]);
-
-  const handleAuthSuccess = async (token) => {
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
     try {
-      // TODO Sprint 2: Send token to your backend for verification & session creation
-      // e.g., await api.verifyGoogleToken(token);
-      console.log('Google OAuth token received:', token);
+      await GoogleSignin.hasPlayServices();
+      const signInResult = await GoogleSignin.signIn();
+      const idToken = signInResult?.data?.idToken || signInResult?.idToken;
+
+      if (!idToken) {
+        throw new Error('No ID token returned from Google Sign-In');
+      }
+
+      // Create Firebase credential and sign in
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCredential = await signInWithCredential(auth, credential);
+
+      // Create or update Firestore user profile
+      await createOrUpdateUserProfile(userCredential.user);
 
       // Navigate to main app
       navigation.replace('MainTabs');
     } catch (err) {
-      Alert.alert('Error', 'Could not complete sign in. Please try again.');
+      console.error('Google Sign-In error:', err);
+      if (err.code === 'SIGN_IN_CANCELLED') {
+        // User cancelled — no alert needed
+      } else if (err.code === 'IN_PROGRESS') {
+        Alert.alert('Sign-In', 'Sign-in is already in progress.');
+      } else if (err.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+        Alert.alert('Error', 'Google Play Services is not available on this device.');
+      } else {
+        Alert.alert('Authentication Error', 'Google sign-in failed. Please try again.');
+      }
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    await promptAsync();
-    // loading state cleared in response handler
-  };
-
   const handleGuestContinue = () => {
-    // TODO Sprint 2: Set guest session flag in context/state
     navigation.replace('MainTabs');
   };
 
@@ -138,11 +116,11 @@ export default function LoginScreen({ navigation }) {
           {/* Divider label */}
           <Text style={styles.sectionLabel}>Sign in to continue</Text>
 
-          {/* Google OAuth Button */}
+          {/* Google Sign-In Button */}
           <TouchableOpacity
             style={styles.googleButton}
             onPress={handleGoogleSignIn}
-            disabled={loading || !request}
+            disabled={loading}
             activeOpacity={0.85}
           >
             {loading ? (
@@ -201,7 +179,6 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: 140,
     backgroundColor: Colors.accentGlow,
-    // blur via shadow (RN approximation)
     shadowColor: Colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
