@@ -1,25 +1,18 @@
 // SCRUM-43: Google Sign-in UI with loading, error, and success states
-// Alchemy AI — Login / Auth Screen
-// Real Firebase Google Sign-In via @react-native-google-signin
+// Alchemy AI — Login / Auth Screen (simplified for web testing)
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
-  Animated,
-  ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { createOrUpdateUserProfile } from '../services/userService';
-import { Colors, Typography, Spacing, Radius } from '../theme';
 
 // Google Sign-In is native-only — skip import on web
 let GoogleSignin = null;
@@ -30,21 +23,8 @@ if (Platform.OS !== 'web') {
   });
 }
 
-const { width, height } = Dimensions.get('window');
-
 export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
-
-  // Fade-in animation on mount
-  const fadeAnim  = new Animated.Value(0);
-  const slideAnim = new Animated.Value(30);
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 900, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
-    ]).start();
-  }, []);
 
   const handleGoogleSignIn = async () => {
     if (Platform.OS === 'web') {
@@ -61,19 +41,14 @@ export default function LoginScreen({ navigation }) {
         throw new Error('No ID token returned from Google Sign-In');
       }
 
-      // Create Firebase credential and sign in
       const credential = GoogleAuthProvider.credential(idToken);
       const userCredential = await signInWithCredential(auth, credential);
-
-      // Create or update Firestore user profile
       await createOrUpdateUserProfile(userCredential.user);
-
-      // Navigate to main app
       navigation.replace('MainTabs');
     } catch (err) {
       console.error('Google Sign-In error:', err);
       if (err.code === 'SIGN_IN_CANCELLED') {
-        // User cancelled — no alert needed
+        // User cancelled
       } else if (err.code === 'IN_PROGRESS') {
         Alert.alert('Sign-In', 'Sign-in is already in progress.');
       } else if (err.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
@@ -92,79 +67,32 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Background gradient */}
-      <LinearGradient
-        colors={['#0A0A0A', '#111008', '#0A0A0A']}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* Ambient glow behind logo */}
-      <View style={styles.glowContainer}>
-        <View style={styles.glow} />
+      <View style={styles.brandSection}>
+        <Text style={styles.logo}>⚗</Text>
+        <Text style={styles.title}>Alchemy</Text>
+        <Text style={styles.tagline}>Your personal mixology companion</Text>
       </View>
 
-      <Animated.View
-        style={[
-          styles.content,
-          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-        ]}
-      >
-        {/* ── Logo / Brand ── */}
-        <View style={styles.brandSection}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoSymbol}>⚗</Text>
-          </View>
-          <Text style={styles.brandName}>Alchemy</Text>
-          <Text style={styles.brandTagline}>Your personal mixology companion</Text>
-        </View>
-
-        {/* ── Auth Buttons ── */}
-        <View style={styles.authSection}>
-          {/* Divider label */}
-          <Text style={styles.sectionLabel}>Sign in to continue</Text>
-
-          {/* Google Sign-In Button */}
-          <TouchableOpacity
-            style={styles.googleButton}
-            onPress={handleGoogleSignIn}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color={Colors.background} size="small" />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={20} color={Colors.background} />
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Guest access */}
-          <TouchableOpacity
-            style={styles.guestButton}
-            onPress={handleGuestContinue}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.guestButtonText}>Explore as guest</Text>
-          </TouchableOpacity>
-
-          {/* Terms note */}
-          <Text style={styles.termsText}>
-            By continuing you agree to our{' '}
-            <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
+      <View style={styles.authSection}>
+        <TouchableOpacity
+          style={styles.googleButton}
+          onPress={handleGoogleSignIn}
+          disabled={loading}
+        >
+          <Text style={styles.googleButtonText}>
+            {loading ? 'Signing in...' : 'Continue with Google'}
           </Text>
-        </View>
-      </Animated.View>
+        </TouchableOpacity>
+
+        <Text style={styles.orText}>— or —</Text>
+
+        <TouchableOpacity
+          style={styles.guestButton}
+          onPress={handleGuestContinue}
+        >
+          <Text style={styles.guestButtonText}>Explore as Guest</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -172,129 +100,60 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
-  },
-
-  // ── Ambient glow ──
-  glowContainer: {
-    position: 'absolute',
-    top: height * 0.15,
-    alignSelf: 'center',
+    backgroundColor: '#0A0A0A',
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 32,
   },
-  glow: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: Colors.accentGlow,
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 80,
-  },
-
-  // ── Layout ──
-  content: {
-    flex: 1,
-    paddingHorizontal: Spacing.xl,
-    justifyContent: 'space-between',
-    paddingTop: height * 0.18,
-    paddingBottom: Spacing.xxl,
-  },
-
-  // ── Brand section ──
   brandSection: {
     alignItems: 'center',
-    gap: Spacing.sm,
+    marginBottom: 60,
   },
-  logoMark: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.accentGlow,
-    marginBottom: Spacing.md,
+  logo: {
+    fontSize: 48,
+    marginBottom: 16,
   },
-  logoSymbol: {
+  title: {
     fontSize: 36,
+    fontWeight: 'bold',
+    color: '#F5F0E8',
   },
-  brandName: {
-    ...Typography.display,
-    fontSize: 42,
-    color: Colors.textPrimary,
+  tagline: {
+    fontSize: 14,
+    color: '#8A8A8A',
+    marginTop: 8,
   },
-  brandTagline: {
-    ...Typography.subheading,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
-  },
-
-  // ── Auth section ──
   authSection: {
-    gap: Spacing.md,
-  },
-  sectionLabel: {
-    ...Typography.label,
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
-  },
-
-  // Google button
-  googleButton: {
-    flexDirection: 'row',
+    width: '100%',
+    maxWidth: 320,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
-    paddingVertical: 16,
-    gap: Spacing.sm,
+  },
+  googleButton: {
+    width: '100%',
+    backgroundColor: '#C9A84C',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
   },
   googleButtonText: {
-    ...Typography.button,
-    color: Colors.background,
+    color: '#0A0A0A',
     fontSize: 16,
+    fontWeight: '600',
   },
-
-  // Divider
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
+  orText: {
+    color: '#4A4A4A',
+    marginVertical: 16,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    ...Typography.bodySmall,
-    color: Colors.textMuted,
-  },
-
-  // Guest button
   guestButton: {
+    width: '100%',
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.md,
-    paddingVertical: 16,
+    borderColor: '#2A2A2A',
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
   },
   guestButtonText: {
-    ...Typography.button,
-    color: Colors.textSecondary,
-  },
-
-  // Terms
-  termsText: {
-    ...Typography.bodySmall,
-    textAlign: 'center',
-    color: Colors.textMuted,
-    lineHeight: 18,
-  },
-  termsLink: {
-    color: Colors.accent,
+    color: '#8A8A8A',
+    fontSize: 16,
   },
 });
