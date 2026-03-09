@@ -1,6 +1,6 @@
 {
   "name": "alchemy-ai",
-  "description": "SCRUM-42: Alchemy AI React Native frontend with Google Sign-In",
+  "description": "SCRUM-42/SCRUM-68: Alchemy AI React Native frontend with Google Sign-In and fixed Expo web entry point",
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
