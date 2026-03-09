@@ -1,5 +1,6 @@
 {
   "name": "alchemy-ai",
+  "description": "SCRUM-42: Alchemy AI React Native frontend with Google Sign-In",
   "version": "1.0.0",
   "main": "App.js",
   "scripts": {
