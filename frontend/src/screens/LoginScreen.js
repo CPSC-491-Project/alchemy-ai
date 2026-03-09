@@ -1,4 +1,4 @@
-// src/screens/LoginScreen.js
+// SCRUM-43: Google Sign-in UI with loading, error, and success states
 // Alchemy AI — Login / Auth Screen
 // Real Firebase Google Sign-In via @react-native-google-signin
 
