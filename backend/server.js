@@ -1,3 +1,4 @@
+// SCRUM-46: Express server with Firebase Admin and protected /api/me route
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();

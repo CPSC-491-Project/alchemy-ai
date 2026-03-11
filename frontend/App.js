@@ -1,50 +1,50 @@
 // App.js
 // Alchemy AI — Root Entry Point
-// Loads custom fonts, checks Firebase auth state, then renders navigation
 
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useFonts } from 'expo-font';
-import {
-  PlayfairDisplay_400Regular,
-  PlayfairDisplay_400Regular_Italic,
-  PlayfairDisplay_700Bold,
-} from '@expo-google-fonts/playfair-display';
-import {
-  DMSans_400Regular,
-  DMSans_500Medium,
-} from '@expo-google-fonts/dm-sans';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebaseConfig';
 
 import RootNavigator from './src/navigation/RootNavigator';
-import { Colors } from './src/theme';
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
-    PlayfairDisplay_400Regular,
-    PlayfairDisplay_400Regular_Italic,
-    PlayfairDisplay_700Bold,
-    DMSans_400Regular,
-    DMSans_500Medium,
-  });
-
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // Skip Firebase auth if API key is not configured
+    const apiKey = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+    if (!apiKey || apiKey === 'your_firebase_api_key_here') {
+      console.warn('Firebase API key not configured — skipping auth');
+      setReady(true);
+      return;
+    }
+
+    // Only import and use Firebase if we have a real key
+    const { onAuthStateChanged } = require('firebase/auth');
+    const { auth } = require('./firebaseConfig');
+
+    const timeout = setTimeout(() => {
+      console.warn('Firebase auth timed out — continuing without auth');
+      setReady(true);
+    }, 3000);
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      clearTimeout(timeout);
       setUser(firebaseUser);
-      setAuthLoading(false);
+      setReady(true);
     });
-    return unsubscribe;
+
+    return () => {
+      clearTimeout(timeout);
+      unsubscribe();
+    };
   }, []);
 
-  if (!fontsLoaded || authLoading) {
+  if (!ready) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator color={Colors.accent} size="large" />
+        <Text style={styles.loadingText}>Loading Alchemy AI...</Text>
       </View>
     );
   }
@@ -60,8 +60,12 @@ export default function App() {
 const styles = StyleSheet.create({
   loader: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#0A0A0A',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#C9A84C',
+    fontSize: 18,
   },
 });

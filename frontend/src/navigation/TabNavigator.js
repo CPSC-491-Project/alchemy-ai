@@ -1,15 +1,13 @@
-// src/navigation/TabNavigator.js
 // Alchemy AI — Bottom Tab Navigation
-// 5 tabs per FR-21: Home, Create, Search, Profile, Favorites
+// 5 tabs per FR-21: Home, Create, Search, Favorites, Profile
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography } from '../theme';
 
-import HomeScreen    from '../screens/HomeScreen';
-import SearchScreen  from '../screens/SearchScreen';
+import HomeScreen from '../screens/HomeScreen';
+import SearchScreen from '../screens/SearchScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -17,16 +15,17 @@ const Tab = createBottomTabNavigator();
 // Placeholder screens for tabs not yet built
 const PlaceholderScreen = ({ route }) => (
   <View style={styles.placeholder}>
-    <Ionicons name="construct-outline" size={32} color={Colors.textMuted} />
+    <Text style={styles.placeholderText}>{route.name}</Text>
+    <Text style={styles.placeholderSub}>Coming soon</Text>
   </View>
 );
 
 const TAB_CONFIG = [
-  { name: 'Home',      icon: 'home',         component: HomeScreen },
-  { name: 'Create',    icon: 'add-circle',   component: PlaceholderScreen },
-  { name: 'Search',    icon: 'search',       component: SearchScreen },
-  { name: 'Favorites', icon: 'heart',        component: PlaceholderScreen },
-  { name: 'Profile',   icon: 'person',       component: ProfileScreen },
+  { name: 'Home', icon: 'home', component: HomeScreen },
+  { name: 'Create', icon: 'add-circle', component: PlaceholderScreen },
+  { name: 'Search', icon: 'search', component: SearchScreen },
+  { name: 'Favorites', icon: 'heart', component: PlaceholderScreen },
+  { name: 'Profile', icon: 'person', component: ProfileScreen },
 ];
 
 export default function TabNavigator() {
@@ -37,15 +36,10 @@ export default function TabNavigator() {
         return {
           headerShown: false,
           tabBarStyle: styles.tabBar,
-          tabBarActiveTintColor:   Colors.accent,
-          tabBarInactiveTintColor: Colors.textMuted,
-          tabBarLabelStyle: styles.tabLabel,
-          tabBarIcon: ({ color, focused, size }) => (
-            <Ionicons
-              name={focused ? tab.icon : `${tab.icon}-outline`}
-              size={22}
-              color={color}
-            />
+          tabBarActiveTintColor: '#C9A84C',
+          tabBarInactiveTintColor: '#4A4A4A',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name={tab.icon} size={22} color={color} />
           ),
         };
       }}
@@ -59,24 +53,19 @@ export default function TabNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: Colors.surface,
-    borderTopColor:  Colors.border,
-    borderTopWidth:  1,
-    height: 72,
-    paddingBottom: 12,
+    backgroundColor: '#141414',
+    borderTopColor: '#2A2A2A',
+    borderTopWidth: 1,
+    height: 60,
+    paddingBottom: 8,
     paddingTop: 8,
-  },
-  tabLabel: {
-    ...Typography.label,
-    fontSize: 10,
-    letterSpacing: 0.5,
-    marginTop: 2,
-    textTransform: 'none',
   },
   placeholder: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#0A0A0A',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  placeholderText: { color: '#F5F0E8', fontSize: 20, fontWeight: 'bold' },
+  placeholderSub: { color: '#4A4A4A', fontSize: 14, marginTop: 8 },
 });

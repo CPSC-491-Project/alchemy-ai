@@ -1,3 +1,4 @@
+// SCRUM-45: Firebase ID token verification middleware
 const admin = require('../firebase-admin');
 
 async function verifyToken(req, res, next) {

@@ -1,3 +1,4 @@
+// SCRUM-44: Firestore user profile creation on login
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
