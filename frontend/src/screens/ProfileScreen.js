@@ -5,7 +5,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 
 const MENU_ITEMS = [
-  { label: 'My Ingredient Cabinet', sprint: 'Sprint 2' },
+  { label: 'My Ingredient Cabinet', sprint: 'Sprint 2', navigateTo: 'IngredientCabinet' },
   { label: 'Favorite Recipes', sprint: 'Sprint 2' },
   { label: 'Drink History', sprint: 'Sprint 3' },
   { label: 'Notifications', sprint: 'Sprint 3' },
@@ -17,6 +17,12 @@ export default function ProfileScreen({ navigation }) {
   const handleSignOut = () => {
     // TODO Sprint 2: clear auth session, token, cached data
     navigation.replace('Login');
+  };
+
+  const handleMenuPress = (item) => {
+    if (item.navigateTo) {
+      navigation.navigate(item.navigateTo);
+    }
   };
 
   return (
@@ -34,10 +40,15 @@ export default function ProfileScreen({ navigation }) {
       </View>
 
       {MENU_ITEMS.map((item) => (
-        <View key={item.label} style={styles.menuItem}>
+        <TouchableOpacity
+          key={item.label}
+          style={styles.menuItem}
+          onPress={() => handleMenuPress(item)}
+          activeOpacity={item.navigateTo ? 0.6 : 1}
+        >
           <Text style={styles.menuLabel}>{item.label}</Text>
           <Text style={styles.menuSprint}>{item.sprint}</Text>
-        </View>
+        </TouchableOpacity>
       ))}
 
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>

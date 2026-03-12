@@ -16,6 +16,7 @@ import { createOrUpdateUserProfile } from '../services/userService';
 
 // Google Sign-In is native-only — skip import on web
 let GoogleSignin = null;
+
 if (Platform.OS !== 'web') {
   GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
   GoogleSignin.configure({

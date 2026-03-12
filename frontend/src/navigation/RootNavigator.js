@@ -7,8 +7,9 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import LoginScreen  from '../screens/LoginScreen';
-import TabNavigator from './TabNavigator';
+import LoginScreen             from '../screens/LoginScreen';
+import TabNavigator            from './TabNavigator';
+import CabinetScreen from '../screens/CabinetScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,8 +20,9 @@ export default function RootNavigator({ user }) {
         screenOptions={{ headerShown: false, animation: 'fade' }}
         initialRouteName={user ? 'MainTabs' : 'Login'}
       >
-        <Stack.Screen name="Login"     component={LoginScreen} />
-        <Stack.Screen name="MainTabs"  component={TabNavigator} />
+        <Stack.Screen name="Login"              component={LoginScreen} />
+        <Stack.Screen name="MainTabs"           component={TabNavigator} />
+        <Stack.Screen name="IngredientCabinet"  component={CabinetScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
