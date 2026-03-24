@@ -16,6 +16,10 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK" });
 });
 
+// SCRUM-70: Cabinet routes
+const cabinetRouter = require("./routes/cabinet");
+app.use("/api/cabinet", cabinetRouter);
+
 // Protected route — requires valid Firebase ID token
 const verifyToken = require("./middleware/verifyToken");
 
