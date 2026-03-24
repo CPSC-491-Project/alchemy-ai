@@ -1,4 +1,4 @@
-// SCRUM-71/72: Cabinet routes — GET and POST /api/cabinet
+// SCRUM-71/72/73: Cabinet routes — GET, POST, DELETE /api/cabinet
 const express = require("express");
 const router = express.Router();
 const admin = require("../firebase-admin");
@@ -42,6 +42,27 @@ router.post("/", verifyToken, async (req, res) => {
   } catch (err) {
     console.error("Error adding ingredient:", err);
     res.status(500).json({ error: "Failed to add ingredient" });
+  }
+});
+
+// DELETE /:ingredientId — remove an ingredient from the authenticated user's cabinet
+router.delete("/:ingredientId", verifyToken, async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const { ingredientId } = req.params;
+
+    const docRef = db.collection("users").doc(uid).collection("cabinet").doc(ingredientId);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Ingredient not found" });
+    }
+
+    await docRef.delete();
+    res.status(204).send();
+  } catch (err) {
+    console.error("Error deleting ingredient:", err);
+    res.status(500).json({ error: "Failed to delete ingredient" });
   }
 });
 
