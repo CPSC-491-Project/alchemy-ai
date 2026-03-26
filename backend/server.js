@@ -20,6 +20,10 @@ app.get("/health", (req, res) => {
 const profileRouter = require("./routes/profile");
 app.use("/api/me", profileRouter);
 
+// SCRUM-114: Recipe routes
+const recipesRouter = require("./routes/recipes");
+app.use("/api/recipes", recipesRouter);
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
