@@ -24,6 +24,10 @@ app.use("/api/me", profileRouter);
 const recipesRouter = require("./routes/recipes");
 app.use("/api/recipes", recipesRouter);
 
+// SCRUM-115: Recommendation routes
+const recommendationsRouter = require("./routes/recommendations");
+app.use("/api/recommendations", recommendationsRouter);
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
