@@ -1,37 +1,12 @@
-// SCRUM-46: Express server with Firebase Admin and protected /api/me route
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config();
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.json({ message: "Alchemy AI Backend Running" });
-});
-
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK" });
-});
-
-// SCRUM-70: Cabinet routes
-const cabinetRouter = require("./routes/cabinet");
-app.use("/api/cabinet", cabinetRouter);
-
-// Protected route — requires valid Firebase ID token
-const verifyToken = require("./middleware/verifyToken");
-
-app.get("/api/me", verifyToken, (req, res) => {
-  res.json({
-    message: "Authenticated!",
-    user: { uid: req.user.uid, email: req.user.email },
-  });
-});
+// SCRUM-90: Entry point — imports app and starts HTTP listener
+const app = require("./app");
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+module.exports = app;
