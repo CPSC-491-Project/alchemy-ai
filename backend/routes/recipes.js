@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const verifyToken = require("../middleware/verifyToken");
-const { searchByIngredient } = require("../services/cocktailDB");
+const { searchByIngredient, lookupById } = require("../services/cocktailDB");
 
 // GET /search — search cocktails by one or more ingredients
 router.get("/search", verifyToken, async (req, res) => {
@@ -42,6 +42,23 @@ router.get("/search", verifyToken, async (req, res) => {
   } catch (err) {
     console.error("Error searching recipes:", err);
     res.status(500).json({ error: "Failed to search recipes" });
+  }
+});
+
+// SCRUM-116: GET /:id — full recipe detail by CocktailDB ID (FR-25)
+router.get("/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await lookupById(id);
+
+    if (!result.drinks || !result.drinks[0]) {
+      return res.status(404).json({ error: "Recipe not found" });
+    }
+
+    res.json(result.drinks[0]);
+  } catch (err) {
+    console.error("Error fetching recipe detail:", err);
+    res.status(500).json({ error: "Failed to fetch recipe detail" });
   }
 });
 
