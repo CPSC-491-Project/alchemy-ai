@@ -1,18 +1,15 @@
-// SCRUM-43: Google Sign-in UI — redesigned to match Alchemy AI mockup
-// Features: glowing orb hero, email/password inputs, Google sign-in, guest access
+// SCRUM-43: Google Sign-in UI with loading, error, and success states
+// Alchemy AI — Login / Auth Screen (simplified for web testing)
 
 import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
   Platform,
-  SafeAreaView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
 import { createOrUpdateUserProfile } from '../services/userService';
@@ -28,8 +25,6 @@ if (Platform.OS !== 'web') {
 
 export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
-  const [email, setEmail]     = useState('');
-  const [password, setPassword] = useState('');
 
   const handleGoogleSignIn = async () => {
     if (Platform.OS === 'web') {
@@ -41,7 +36,11 @@ export default function LoginScreen({ navigation }) {
       await GoogleSignin.hasPlayServices();
       const signInResult = await GoogleSignin.signIn();
       const idToken = signInResult?.data?.idToken || signInResult?.idToken;
-      if (!idToken) throw new Error('No ID token returned from Google Sign-In');
+
+      if (!idToken) {
+        throw new Error('No ID token returned from Google Sign-In');
+      }
+
       const credential = GoogleAuthProvider.credential(idToken);
       const userCredential = await signInWithCredential(auth, credential);
       await createOrUpdateUserProfile(userCredential.user);
@@ -49,7 +48,7 @@ export default function LoginScreen({ navigation }) {
     } catch (err) {
       console.error('Google Sign-In error:', err);
       if (err.code === 'SIGN_IN_CANCELLED') {
-        // User cancelled — no action needed
+        // User cancelled
       } else if (err.code === 'IN_PROGRESS') {
         Alert.alert('Sign-In', 'Sign-in is already in progress.');
       } else if (err.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
@@ -62,185 +61,99 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  const handleGuestContinue = () => navigation.replace('MainTabs');
+  const handleGuestContinue = () => {
+    navigation.replace('MainTabs');
+  };
 
   return (
-    <SafeAreaView style={styles.root}>
-      {/* Header */}
-      <Text style={styles.header}>ALCHEMY AI</Text>
-
-      {/* Glowing Orb Hero */}
-      <View style={styles.orbContainer}>
-        <View style={styles.orbGlow} />
-        <Text style={styles.orbTitle}>ALCHEMY</Text>
+    <View style={styles.container}>
+      <View style={styles.brandSection}>
+        <Text style={styles.logo}>⚗</Text>
+        <Text style={styles.title}>Alchemy</Text>
+        <Text style={styles.tagline}>Your personal mixology companion</Text>
       </View>
 
-      {/* Tagline */}
-      <Text style={styles.tagline}>The art of the perfect pour</Text>
-
-      {/* Form */}
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor="#5A5A5A"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#5A5A5A"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        {/* Google Sign-In Button */}
+      <View style={styles.authSection}>
         <TouchableOpacity
           style={styles.googleButton}
           onPress={handleGoogleSignIn}
           disabled={loading}
-          activeOpacity={0.85}
         >
-          <LinearGradient
-            colors={['#D4A84B', '#C9A84C', '#B8952A']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.googleGradient}
-          >
-            <Text style={styles.googleButtonText}>
-              {loading ? 'Signing in...' : 'Sign In with Google'}
-            </Text>
-          </LinearGradient>
+          <Text style={styles.googleButtonText}>
+            {loading ? 'Signing in...' : 'Continue with Google'}
+          </Text>
         </TouchableOpacity>
 
-        {/* Bottom links */}
-        <View style={styles.linksRow}>
-          <TouchableOpacity onPress={handleGuestContinue}>
-            <Text style={styles.linkText}>Continue as Guest</Text>
-          </TouchableOpacity>
-          <TouchableOpacity>
-            <Text style={styles.linkText}>Forgot Password?</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        <Text style={styles.orText}>— or —</Text>
 
-      {/* Footer */}
-      <TouchableOpacity style={styles.footer}>
-        <Text style={styles.footerText}>New to Alchemy? Begin your journey →</Text>
-      </TouchableOpacity>
-    </SafeAreaView>
+        <TouchableOpacity
+          style={styles.guestButton}
+          onPress={handleGuestContinue}
+        >
+          <Text style={styles.guestButtonText}>Explore as Guest</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  container: {
     flex: 1,
     backgroundColor: '#0A0A0A',
-    alignItems: 'center',
-  },
-
-  // Header
-  header: {
-    marginTop: 20,
-    fontSize: 12,
-    letterSpacing: 6,
-    color: '#C9A84C',
-    fontWeight: '500',
-  },
-
-  // Orb
-  orbContainer: {
-    marginTop: 24,
-    alignItems: 'center',
     justifyContent: 'center',
-    height: 220,
-    width: '100%',
+    alignItems: 'center',
+    padding: 32,
   },
-  orbGlow: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: '#C9A84C',
-    opacity: 0.18,
-    shadowColor: '#C9A84C',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 80,
-    elevation: 20,
+  brandSection: {
+    alignItems: 'center',
+    marginBottom: 60,
   },
-  orbTitle: {
+  logo: {
     fontSize: 48,
-    fontWeight: '300',
-    letterSpacing: 14,
-    color: '#F5F0E8',
-    zIndex: 1,
+    marginBottom: 16,
   },
-
-  // Tagline
+  title: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#F5F0E8',
+  },
   tagline: {
-    fontSize: 13,
-    color: '#6A6A6A',
-    letterSpacing: 1,
+    fontSize: 14,
+    color: '#8A8A8A',
     marginTop: 8,
-    marginBottom: 32,
   },
-
-  // Form
-  form: {
+  authSection: {
     width: '100%',
-    paddingHorizontal: 28,
-  },
-  input: {
-    backgroundColor: '#141414',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    borderRadius: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    fontSize: 15,
-    color: '#F5F0E8',
-    marginBottom: 12,
+    maxWidth: 320,
+    alignItems: 'center',
   },
   googleButton: {
+    width: '100%',
+    backgroundColor: '#C9A84C',
+    paddingVertical: 14,
     borderRadius: 10,
-    overflow: 'hidden',
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  googleGradient: {
-    paddingVertical: 16,
     alignItems: 'center',
-    borderRadius: 10,
   },
   googleButtonText: {
     color: '#0A0A0A',
     fontSize: 16,
     fontWeight: '600',
-    letterSpacing: 0.3,
   },
-  linksRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
+  orText: {
+    color: '#4A4A4A',
+    marginVertical: 16,
   },
-  linkText: {
-    color: '#6A6A6A',
-    fontSize: 13,
+  guestButton: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-
-  // Footer
-  footer: {
-    position: 'absolute',
-    bottom: 32,
-  },
-  footerText: {
-    color: '#C9A84C',
-    fontSize: 13,
-    letterSpacing: 0.5,
+  guestButtonText: {
+    color: '#8A8A8A',
+    fontSize: 16,
   },
 });
