@@ -12,23 +12,23 @@ import {
   Platform,
   SafeAreaView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { auth } from '../../firebaseConfig';
-import { createOrUpdateUserProfile } from '../services/userService';
 
 // Google Sign-In is native-only — skip import on web
 let GoogleSignin = null;
 if (Platform.OS !== 'web') {
-  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
-  GoogleSignin.configure({
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'PLACEHOLDER_WEB_CLIENT_ID',
-  });
+  try {
+    GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+    GoogleSignin.configure({
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'PLACEHOLDER_WEB_CLIENT_ID',
+    });
+  } catch (e) {
+    console.log('GoogleSignin not available:', e);
+  }
 }
 
 export default function LoginScreen({ navigation }) {
-  const [loading, setLoading] = useState(false);
-  const [email, setEmail]     = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
 
   const handleGoogleSignIn = async () => {
@@ -41,22 +41,19 @@ export default function LoginScreen({ navigation }) {
       await GoogleSignin.hasPlayServices();
       const signInResult = await GoogleSignin.signIn();
       const idToken = signInResult?.data?.idToken || signInResult?.idToken;
-      if (!idToken) throw new Error('No ID token returned from Google Sign-In');
+      if (!idToken) throw new Error('No ID token returned');
+
+      const { GoogleAuthProvider, signInWithCredential } = await import('firebase/auth');
+      const { auth } = await import('../../firebaseConfig');
+      const { createOrUpdateUserProfile } = await import('../services/userService');
+
       const credential = GoogleAuthProvider.credential(idToken);
       const userCredential = await signInWithCredential(auth, credential);
       await createOrUpdateUserProfile(userCredential.user);
       navigation.replace('MainTabs');
     } catch (err) {
       console.error('Google Sign-In error:', err);
-      if (err.code === 'SIGN_IN_CANCELLED') {
-        // User cancelled — no action needed
-      } else if (err.code === 'IN_PROGRESS') {
-        Alert.alert('Sign-In', 'Sign-in is already in progress.');
-      } else if (err.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
-        Alert.alert('Error', 'Google Play Services is not available on this device.');
-      } else {
-        Alert.alert('Authentication Error', 'Google sign-in failed. Please try again.');
-      }
+      Alert.alert('Authentication Error', 'Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -66,6 +63,7 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.root}>
+
       {/* Header */}
       <Text style={styles.header}>ALCHEMY AI</Text>
 
@@ -105,16 +103,9 @@ export default function LoginScreen({ navigation }) {
           disabled={loading}
           activeOpacity={0.85}
         >
-          <LinearGradient
-            colors={['#D4A84B', '#C9A84C', '#B8952A']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.googleGradient}
-          >
-            <Text style={styles.googleButtonText}>
-              {loading ? 'Signing in...' : 'Sign In with Google'}
-            </Text>
-          </LinearGradient>
+          <Text style={styles.googleButtonText}>
+            {loading ? 'Signing in...' : 'Sign In with Google'}
+          </Text>
         </TouchableOpacity>
 
         {/* Bottom links */}
@@ -132,6 +123,7 @@ export default function LoginScreen({ navigation }) {
       <TouchableOpacity style={styles.footer}>
         <Text style={styles.footerText}>New to Alchemy? Begin your journey →</Text>
       </TouchableOpacity>
+
     </SafeAreaView>
   );
 }
@@ -142,8 +134,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0A0A',
     alignItems: 'center',
   },
-
-  // Header
   header: {
     marginTop: 20,
     fontSize: 12,
@@ -151,8 +141,6 @@ const styles = StyleSheet.create({
     color: '#C9A84C',
     fontWeight: '500',
   },
-
-  // Orb
   orbContainer: {
     marginTop: 24,
     alignItems: 'center',
@@ -180,8 +168,6 @@ const styles = StyleSheet.create({
     color: '#F5F0E8',
     zIndex: 1,
   },
-
-  // Tagline
   tagline: {
     fontSize: 13,
     color: '#6A6A6A',
@@ -189,8 +175,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 32,
   },
-
-  // Form
   form: {
     width: '100%',
     paddingHorizontal: 28,
@@ -207,15 +191,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   googleButton: {
+    backgroundColor: '#C9A84C',
+    paddingVertical: 16,
     borderRadius: 10,
-    overflow: 'hidden',
+    alignItems: 'center',
     marginTop: 4,
     marginBottom: 20,
-  },
-  googleGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderRadius: 10,
   },
   googleButtonText: {
     color: '#0A0A0A',
@@ -232,8 +213,6 @@ const styles = StyleSheet.create({
     color: '#6A6A6A',
     fontSize: 13,
   },
-
-  // Footer
   footer: {
     position: 'absolute',
     bottom: 32,
