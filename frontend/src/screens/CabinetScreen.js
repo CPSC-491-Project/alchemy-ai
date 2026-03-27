@@ -1,8 +1,8 @@
 // src/screens/CabinetScreen.js
 // Alchemy AI — Ingredient Cabinet Screen
-// Sprint 2: Local state management. Will connect to user profile in Sprint 3.
+// Sprint 2: Wired to AsyncStorage via cabinetService. Will connect to user profile in Sprint 3.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,35 +14,65 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-
-const INITIAL_INGREDIENTS = [
-  { id: '1', name: 'Bourbon' },
-  { id: '2', name: 'Sweet Vermouth' },
-  { id: '3', name: 'Angostura Bitters' },
-];
+import { fetchCabinet, addIngredient, deleteIngredient } from '../services/cabinetService';
 
 export default function CabinetScreen({ navigation }) {
-  const [ingredients, setIngredients] = useState(INITIAL_INGREDIENTS);
+  const [ingredients, setIngredients] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleAdd = () => {
+  // ─── Load ingredients on mount ───────────────────────────────────────────────
+
+  const loadCabinet = useCallback(async () => {
+    setLoading(true);
+    const data = await fetchCabinet();
+    setIngredients(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadCabinet();
+  }, [loadCabinet]);
+
+  // ─── Add ingredient ───────────────────────────────────────────────────────────
+
+  const handleAdd = async () => {
     const trimmed = inputText.trim();
     if (!trimmed) return;
 
-    const newIngredient = {
-      id: Date.now().toString(),
-      name: trimmed,
-    };
-    setIngredients((prev) => [newIngredient, ...prev]);
-    setInputText('');
-    setModalVisible(false);
+    setSaving(true);
+    const result = await addIngredient(trimmed);
+    setSaving(false);
+
+    if (result.success) {
+      setIngredients((prev) => [result.ingredient, ...prev]);
+      setInputText('');
+      setModalVisible(false);
+    } else {
+      Alert.alert('Could not add ingredient', result.error);
+    }
   };
 
-  const handleDelete = (id) => {
+  // ─── Delete ingredient ────────────────────────────────────────────────────────
+
+  const handleDelete = async (id) => {
+    // Optimistic update: remove from UI immediately
     setIngredients((prev) => prev.filter((item) => item.id !== id));
+
+    const result = await deleteIngredient(id);
+    if (!result.success) {
+      // Rollback on failure
+      Alert.alert('Error', result.error);
+      loadCabinet();
+    }
   };
+
+  // ─── Render helpers ───────────────────────────────────────────────────────────
 
   const renderItem = ({ item }) => (
     <View style={styles.card}>
@@ -60,6 +90,8 @@ export default function CabinetScreen({ navigation }) {
     </View>
   );
 
+  // ─── Render ───────────────────────────────────────────────────────────────────
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -75,19 +107,28 @@ export default function CabinetScreen({ navigation }) {
       </Text>
 
       {/* Ingredient List */}
-      <FlatList
-        data={ingredients}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🍶</Text>
-            <Text style={styles.emptyText}>Your cabinet is empty.</Text>
-            <Text style={styles.emptySubText}>Add ingredients to get personalized cocktail recommendations.</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="small" color="#C9A84C" />
+          <Text style={styles.loadingText}>Loading cabinet...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={ingredients}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🍶</Text>
+              <Text style={styles.emptyText}>Your cabinet is empty.</Text>
+              <Text style={styles.emptySubText}>
+                Add ingredients to get personalized cocktail recommendations.
+              </Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Add Button */}
       <View style={styles.footer}>
@@ -131,15 +172,23 @@ export default function CabinetScreen({ navigation }) {
               returnKeyType="done"
               onSubmitEditing={handleAdd}
               selectionColor="#C9A84C"
+              editable={!saving}
             />
 
             <TouchableOpacity
-              style={[styles.modalAddButton, !inputText.trim() && styles.modalAddButtonDisabled]}
+              style={[
+                styles.modalAddButton,
+                (!inputText.trim() || saving) && styles.modalAddButtonDisabled,
+              ]}
               onPress={handleAdd}
               activeOpacity={0.85}
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || saving}
             >
-              <Text style={styles.modalAddButtonText}>Add to Cabinet</Text>
+              {saving ? (
+                <ActivityIndicator size="small" color="#0A0A0A" />
+              ) : (
+                <Text style={styles.modalAddButtonText}>Add to Cabinet</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -148,6 +197,7 @@ export default function CabinetScreen({ navigation }) {
                 setInputText('');
                 setModalVisible(false);
               }}
+              disabled={saving}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -190,6 +240,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingHorizontal: 20,
     marginBottom: 16,
+  },
+
+  // Loading
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: '#8A8A8A',
+    fontSize: 14,
   },
 
   // List

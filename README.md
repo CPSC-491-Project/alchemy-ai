@@ -22,4 +22,4 @@ cd frontend
 npm install  
 
 Test connection:
-node testFirebase.js  
+node testFirebase.js
