@@ -1,130 +1,223 @@
 // Alchemy AI — Search Screen
-// Sprint 1: UI skeleton with search bar. Sprint 3 will wire to CocktailDB / backend API.
+// Features: search bar, filter chips, cocktail grid with ratings and tags
 
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  FlatList,
+} from 'react-native';
 
-// Placeholder ingredient chips for Sprint 1 UI demo
-const INGREDIENTS = [
-  'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
-  'Lime', 'Lemon', 'Orange', 'Mint', 'Sugar', 'Bitters',
+const FILTERS = ['Whiskey', 'Gin', 'Citrus', 'Vermouth', 'Mezcal'];
+
+const COCKTAILS = [
+  { id: '1', name: 'Old Fashioned', rating: 5, tags: ['Classic', 'Stirred'] },
+  { id: '2', name: 'Negroni',       rating: 5, tags: ['Bitter', 'Stirred'] },
+  { id: '3', name: 'Manhattan',     rating: 5, tags: ['Rich', 'Stirred'] },
+  { id: '4', name: 'Margarita',     rating: 5, tags: ['Citrus', 'Shaken'] },
 ];
 
-// Placeholder result cards — replace with API results in Sprint 3
-const PLACEHOLDER_RESULTS = [
-  { id: '1', name: 'Moscow Mule', match: '95%' },
-  { id: '2', name: 'Mojito', match: '88%' },
-  { id: '3', name: 'Old Fashioned', match: '82%' },
-];
+function StarRating({ count = 5 }) {
+  return (
+    <View style={styles.stars}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Text key={i} style={[styles.star, i < count && styles.starFilled]}>★</Text>
+      ))}
+    </View>
+  );
+}
+
+function CocktailCard({ item }) {
+  return (
+    <TouchableOpacity style={styles.card} activeOpacity={0.8}>
+      {/* Image placeholder */}
+      <View style={styles.cardImage} />
+      <View style={styles.cardBody}>
+        <Text style={styles.cardName}>{item.name}</Text>
+        <StarRating count={item.rating} />
+        <Text style={styles.cardTags}>{item.tags.join(' · ')}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function SearchScreen() {
-  const [query, setQuery] = useState('');
-  const [activeIngredients, setActiveIngredients] = useState([]);
-  const [showResults, setShowResults] = useState(false);
-
-  const toggleIngredient = (name) => {
-    setActiveIngredients((prev) =>
-      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
-    );
-  };
-
-  const handleSearch = () => {
-    // TODO Sprint 3: call recommendation API with query + activeIngredients
-    setShowResults(true);
-  };
-
-  const handleClear = () => {
-    setQuery('');
-    setActiveIngredients([]);
-    setShowResults(false);
-  };
+  const [query, setQuery]         = useState('');
+  const [activeFilter, setFilter] = useState('Whiskey');
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Search</Text>
+    <SafeAreaView style={styles.root}>
 
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search cocktails..."
-        placeholderTextColor="#4A4A4A"
-        value={query}
-        onChangeText={setQuery}
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Search</Text>
+        <TouchableOpacity>
+          <Text style={styles.headerIcon}>♪</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchBar}>
+        <Text style={styles.searchDot}>●</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Find a cocktail or ingredient..."
+          placeholderTextColor="#4A4A4A"
+          value={query}
+          onChangeText={setQuery}
+        />
+      </View>
+
+      {/* Filter Chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filtersRow}
+        contentContainerStyle={styles.filtersContent}
+      >
+        {FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.chip, activeFilter === f && styles.chipActive]}
+            onPress={() => setFilter(f)}
+          >
+            <Text style={[styles.chipText, activeFilter === f && styles.chipTextActive]}>
+              {f}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Cocktail Grid */}
+      <FlatList
+        data={COCKTAILS}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.grid}
+        renderItem={({ item }) => <CocktailCard item={item} />}
+        showsVerticalScrollIndicator={false}
       />
 
-      {activeIngredients.length > 0 && (
-        <View style={styles.activeRow}>
-          <Text style={styles.activeLabel}>Selected: {activeIngredients.join(', ')}</Text>
-          <TouchableOpacity onPress={handleClear}>
-            <Text style={styles.clearText}>Clear all</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <Text style={styles.sectionTitle}>Ingredients</Text>
-      <View style={styles.chipGrid}>
-        {INGREDIENTS.map((name) => (
-          <TouchableOpacity
-            key={name}
-            style={[styles.chip, activeIngredients.includes(name) && styles.chipActive]}
-            onPress={() => toggleIngredient(name)}
-          >
-            <Text style={[styles.chipText, activeIngredients.includes(name) && styles.chipTextActive]}>
-              {name}
+      {/* Bottom Nav */}
+      <View style={styles.bottomNav}>
+        {['Home', 'Create', 'Favorites', 'Search', 'Profile'].map((tab) => (
+          <TouchableOpacity key={tab} style={styles.navItem}>
+            <Text style={[styles.navLabel, tab === 'Search' && styles.navLabelActive]}>
+              {tab}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-        <Text style={styles.searchButtonText}>Find Cocktails</Text>
-      </TouchableOpacity>
-
-      {showResults && (
-        <View style={styles.results}>
-          <Text style={styles.sectionTitle}>Results</Text>
-          {PLACEHOLDER_RESULTS.map((r) => (
-            <View key={r.id} style={styles.resultCard}>
-              <Text style={styles.resultName}>{r.name}</Text>
-              <Text style={styles.resultMatch}>{r.match}</Text>
-            </View>
-          ))}
-          <Text style={styles.note}>Sprint 1 placeholder — real data wired in Sprint 3</Text>
-        </View>
-      )}
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0A', padding: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#F5F0E8', marginTop: 40, marginBottom: 20 },
-  searchInput: {
-    backgroundColor: '#1C1C1C', color: '#F5F0E8', padding: 14,
-    borderRadius: 10, fontSize: 16, marginBottom: 16,
+  root: {
+    flex: 1,
+    backgroundColor: '#0A0A0A',
   },
-  activeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  activeLabel: { color: '#8A8A8A', fontSize: 13 },
-  clearText: { color: '#C9A84C', fontSize: 13 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#F5F0E8', marginBottom: 12 },
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  backBtn: { width: 32 },
+  backArrow: { color: '#F5F0E8', fontSize: 20 },
+  headerTitle: { color: '#F5F0E8', fontSize: 17, fontWeight: '600', letterSpacing: 0.3 },
+  headerIcon: { color: '#F5F0E8', fontSize: 18, width: 32, textAlign: 'right' },
+
+  // Search Bar
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#141414',
+    borderRadius: 24,
+    marginHorizontal: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    marginBottom: 14,
+  },
+  searchDot: { color: '#C9A84C', fontSize: 10, marginRight: 10 },
+  searchInput: { flex: 1, color: '#F5F0E8', fontSize: 14 },
+
+  // Filter Chips
+  filtersRow: { maxHeight: 44, marginBottom: 16 },
+  filtersContent: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   chip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: '#2A2A2A', backgroundColor: '#141414',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    backgroundColor: '#141414',
   },
   chipActive: { borderColor: '#C9A84C', backgroundColor: '#C9A84C22' },
-  chipText: { color: '#8A8A8A', fontSize: 13 },
-  chipTextActive: { color: '#C9A84C' },
-  searchButton: {
-    backgroundColor: '#C9A84C', paddingVertical: 14, borderRadius: 10,
-    alignItems: 'center', marginBottom: 24,
+  chipText: { color: '#6A6A6A', fontSize: 13 },
+  chipTextActive: { color: '#C9A84C', fontWeight: '500' },
+
+  // Grid
+  grid: { paddingHorizontal: 12, paddingBottom: 80 },
+  gridRow: { justifyContent: 'space-between', marginBottom: 12 },
+  card: {
+    width: '48%',
+    backgroundColor: '#141414',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    overflow: 'hidden',
   },
-  searchButtonText: { color: '#0A0A0A', fontSize: 16, fontWeight: '600' },
-  results: { marginTop: 8 },
-  resultCard: {
-    backgroundColor: '#1C1C1C', padding: 16, borderRadius: 10,
-    marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between',
+  cardImage: {
+    width: '100%',
+    height: 130,
+    backgroundColor: '#1C1C1C',
   },
-  resultName: { color: '#F5F0E8', fontSize: 16, fontWeight: '600' },
-  resultMatch: { color: '#C9A84C', fontSize: 14 },
-  note: { color: '#4A4A4A', fontSize: 12, textAlign: 'center', marginTop: 12 },
+  cardBody: {
+    padding: 10,
+  },
+  cardName: {
+    color: '#F5F0E8',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  stars: { flexDirection: 'row', marginBottom: 4 },
+  star: { color: '#2A2A2A', fontSize: 11, marginRight: 1 },
+  starFilled: { color: '#C9A84C' },
+  cardTags: { color: '#C9A84C', fontSize: 11 },
+
+  // Bottom Nav
+  bottomNav: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#0A0A0A',
+    borderTopWidth: 1,
+    borderTopColor: '#1C1C1C',
+    paddingVertical: 12,
+    paddingBottom: 20,
+  },
+  navItem: { alignItems: 'center' },
+  navLabel: { color: '#4A4A4A', fontSize: 12 },
+  navLabelActive: { color: '#C9A84C' },
 });
