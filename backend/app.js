@@ -19,4 +19,8 @@ app.get("/health", (req, res) => {
 const cabinetRouter = require("./routes/cabinet");
 app.use("/api/cabinet", cabinetRouter);
 
+// Cocktail routes — proxies TheCocktailDB
+const cocktailRouter = require("./routes/cocktails");
+app.use("/api/cocktails", cocktailRouter);
+
 module.exports = app;

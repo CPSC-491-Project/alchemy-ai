@@ -91,9 +91,9 @@ function StarRating() {
   );
 }
 
-function CocktailCard({ item }) {
+function CocktailCard({ item, onPress }) {
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
       {item.image ? (
         <Image source={{ uri: item.image }} style={styles.cardImage} />
       ) : (
@@ -108,7 +108,7 @@ function CocktailCard({ item }) {
   );
 }
 
-export default function SearchScreen() {
+export default function SearchScreen({ navigation }) {
   const [query, setQuery]         = useState('');
   const [activeFilter, setFilter] = useState('All');
   const [cocktails, setCocktails] = useState([]);
@@ -233,7 +233,12 @@ export default function SearchScreen() {
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={styles.grid}
-          renderItem={({ item }) => <CocktailCard item={item} />}
+          renderItem={({ item }) => (
+            <CocktailCard
+              item={item}
+              onPress={() => navigation.navigate("CocktailDetail", { cocktailId: item.id, cocktailName: item.name })}
+            />
+          )}
           showsVerticalScrollIndicator={false}
         />
       )}
