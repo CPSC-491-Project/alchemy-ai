@@ -1,7 +1,7 @@
 // Alchemy AI — Search Screen
-// Features: search bar, filter chips, cocktail grid with ratings and tags
+// Features: search bar, filter chips, cocktail grid with live TheCocktailDB API + Firestore caching
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,22 +11,77 @@ import {
   ScrollView,
   SafeAreaView,
   FlatList,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
+import { db } from '../../firebaseConfig';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-const FILTERS = ['Whiskey', 'Gin', 'Citrus', 'Vermouth', 'Mezcal'];
+const FILTERS = ['All', 'Whiskey', 'Gin', 'Vodka', 'Rum', 'Tequila'];
+const COCKTAILDB_URL = 'https://www.thecocktaildb.com/api/json/v1/1';
 
-const COCKTAILS = [
-  { id: '1', name: 'Old Fashioned', rating: 5, tags: ['Classic', 'Stirred'] },
-  { id: '2', name: 'Negroni',       rating: 5, tags: ['Bitter', 'Stirred'] },
-  { id: '3', name: 'Manhattan',     rating: 5, tags: ['Rich', 'Stirred'] },
-  { id: '4', name: 'Margarita',     rating: 5, tags: ['Citrus', 'Shaken'] },
-];
+// Default cocktails shown before any search
+const DEFAULT_QUERIES = ['margarita', 'negroni', 'mojito', 'old fashioned'];
 
-function StarRating({ count = 5 }) {
+// Normalize a CocktailDB drink into our card format
+function normalizeDrink(drink) {
+  const tags = [drink.strCategory, drink.strAlcoholic]
+    .filter(Boolean)
+    .slice(0, 2);
+  return {
+    id: drink.idDrink,
+    name: drink.strDrink,
+    image: drink.strDrinkThumb,
+    tags,
+    category: drink.strCategory || '',
+    alcoholic: drink.strAlcoholic || '',
+  };
+}
+
+// Fetch from CocktailDB and cache in Firestore
+async function fetchCocktails(searchQuery) {
+  const cacheKey = searchQuery.toLowerCase().trim();
+
+  // 1. Try Firestore cache first
+  try {
+    const cached = await getDoc(doc(db, 'cocktailCache', cacheKey));
+    if (cached.exists()) {
+      return cached.data().drinks;
+    }
+  } catch (_) { /* cache miss, continue */ }
+
+  // 2. Fetch from TheCocktailDB API
+  const res = await fetch(`${COCKTAILDB_URL}/search.php?s=${encodeURIComponent(cacheKey)}`);
+  const data = await res.json();
+  const drinks = (data.drinks || []).map(normalizeDrink);
+
+  // 3. Save to Firestore cache (fire-and-forget)
+  if (drinks.length > 0) {
+    setDoc(doc(db, 'cocktailCache', cacheKey), {
+      drinks,
+      cachedAt: Date.now(),
+    }).catch(() => {});
+  }
+
+  return drinks;
+}
+
+// Filter by active chip category
+function applyFilter(drinks, filter) {
+  if (filter === 'All') return drinks;
+  return drinks.filter(
+    (d) =>
+      d.category?.toLowerCase().includes(filter.toLowerCase()) ||
+      d.name?.toLowerCase().includes(filter.toLowerCase()) ||
+      d.tags?.some((t) => t?.toLowerCase().includes(filter.toLowerCase()))
+  );
+}
+
+function StarRating() {
   return (
     <View style={styles.stars}>
       {Array.from({ length: 5 }).map((_, i) => (
-        <Text key={i} style={[styles.star, i < count && styles.starFilled]}>★</Text>
+        <Text key={i} style={styles.starFilled}>★</Text>
       ))}
     </View>
   );
@@ -35,20 +90,78 @@ function StarRating({ count = 5 }) {
 function CocktailCard({ item }) {
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.8}>
-      {/* Image placeholder */}
-      <View style={styles.cardImage} />
+      {item.image ? (
+        <Image source={{ uri: item.image }} style={styles.cardImage} />
+      ) : (
+        <View style={styles.cardImagePlaceholder} />
+      )}
       <View style={styles.cardBody}>
-        <Text style={styles.cardName}>{item.name}</Text>
-        <StarRating count={item.rating} />
-        <Text style={styles.cardTags}>{item.tags.join(' · ')}</Text>
+        <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+        <StarRating />
+        <Text style={styles.cardTags} numberOfLines={1}>
+          {item.tags.join(' · ')}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 export default function SearchScreen() {
-  const [query, setQuery]         = useState('');
-  const [activeFilter, setFilter] = useState('Whiskey');
+  const [query, setQuery]           = useState('');
+  const [activeFilter, setFilter]   = useState('All');
+  const [cocktails, setCocktails]   = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const debounceRef                 = useRef(null);
+
+  // Load default cocktails on mount
+  useEffect(() => {
+    loadDefaults();
+  }, []);
+
+  async function loadDefaults() {
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await Promise.all(DEFAULT_QUERIES.map(fetchCocktails));
+      const merged = results.flat();
+      // Deduplicate by id
+      const unique = [...new Map(merged.map((d) => [d.id, d])).values()];
+      setCocktails(unique);
+    } catch (e) {
+      setError('Could not load cocktails.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Debounced search when query changes
+  function handleQueryChange(text) {
+    setQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!text.trim()) {
+      // Reset to defaults when search is cleared
+      loadDefaults();
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const results = await fetchCocktails(text);
+        setCocktails(results);
+        if (results.length === 0) setError(`No cocktails found for "${text}"`);
+      } catch (e) {
+        setError('Search failed. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    }, 500); // 500ms debounce
+  }
+
+  const displayedCocktails = applyFilter(cocktails, activeFilter);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -72,8 +185,15 @@ export default function SearchScreen() {
           placeholder="Find a cocktail or ingredient..."
           placeholderTextColor="#4A4A4A"
           value={query}
-          onChangeText={setQuery}
+          onChangeText={handleQueryChange}
+          autoCorrect={false}
         />
+        {loading && <ActivityIndicator size="small" color="#C9A84C" style={{ marginLeft: 8 }} />}
+        {query.length > 0 && !loading && (
+          <TouchableOpacity onPress={() => handleQueryChange('')}>
+            <Text style={styles.clearBtn}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Filter Chips */}
@@ -96,16 +216,25 @@ export default function SearchScreen() {
         ))}
       </ScrollView>
 
+      {/* Error / Empty State */}
+      {error && !loading && (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>{error}</Text>
+        </View>
+      )}
+
       {/* Cocktail Grid */}
-      <FlatList
-        data={COCKTAILS}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.grid}
-        renderItem={({ item }) => <CocktailCard item={item} />}
-        showsVerticalScrollIndicator={false}
-      />
+      {!error && (
+        <FlatList
+          data={displayedCocktails}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          columnWrapperStyle={styles.gridRow}
+          contentContainerStyle={styles.grid}
+          renderItem={({ item }) => <CocktailCard item={item} />}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
@@ -173,6 +302,13 @@ const styles = StyleSheet.create({
   chipText: { color: '#6A6A6A', fontSize: 13 },
   chipTextActive: { color: '#C9A84C', fontWeight: '500' },
 
+  // Search extras
+  clearBtn: { color: '#4A4A4A', fontSize: 14, paddingLeft: 8 },
+
+  // Empty / Error state
+  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
+  emptyText: { color: '#4A4A4A', fontSize: 14, textAlign: 'center' },
+
   // Grid
   grid: { paddingHorizontal: 12, paddingBottom: 80 },
   gridRow: { justifyContent: 'space-between', marginBottom: 12 },
@@ -189,6 +325,11 @@ const styles = StyleSheet.create({
     height: 130,
     backgroundColor: '#1C1C1C',
   },
+  cardImagePlaceholder: {
+    width: '100%',
+    height: 130,
+    backgroundColor: '#1C1C1C',
+  },
   cardBody: {
     padding: 10,
   },
@@ -200,7 +341,7 @@ const styles = StyleSheet.create({
   },
   stars: { flexDirection: 'row', marginBottom: 4 },
   star: { color: '#2A2A2A', fontSize: 11, marginRight: 1 },
-  starFilled: { color: '#C9A84C' },
+  starFilled: { color: '#C9A84C', fontSize: 11, marginRight: 1 },
   cardTags: { color: '#C9A84C', fontSize: 11 },
 
   // Bottom Nav
