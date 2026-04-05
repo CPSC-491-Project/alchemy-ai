@@ -1,130 +1,123 @@
+// =============================================================
 // Alchemy AI — Search Screen
-// Sprint 1: UI skeleton with search bar. Sprint 3 will wire to CocktailDB / backend API.
-
+// SCRUM-125 | feature/SCRUM-122-hifi-screens | Allisa Warren
+// Overwrites Sprint 1 placeholder
+// =============================================================
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  FlatList, SafeAreaView, StatusBar, ScrollView,
+} from 'react-native';
+import { Colors, DisplayText, BodyText, Spacing, Radius } from '../theme';
+import { BottomNavBar } from './HomeScreen';
 
-// Placeholder ingredient chips for Sprint 1 UI demo
-const INGREDIENTS = [
-  'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
-  'Lime', 'Lemon', 'Orange', 'Mint', 'Sugar', 'Bitters',
-];
+const CHIPS = ['Whiskey', 'Gin', 'Citrus', 'Vermouth', 'Mezcal', 'Rum', 'Vodka', 'Tequila'];
 
-// Placeholder result cards — replace with API results in Sprint 3
-const PLACEHOLDER_RESULTS = [
-  { id: '1', name: 'Moscow Mule', match: '95%' },
-  { id: '2', name: 'Mojito', match: '88%' },
-  { id: '3', name: 'Old Fashioned', match: '82%' },
-];
+const StarRating = ({ rating }) => (
+  <Text style={styles.stars}>{Array.from({ length: 5 }, (_, i) => i < rating ? '★' : '☆').join('')}</Text>
+);
 
-export default function SearchScreen() {
-  const [query, setQuery] = useState('');
-  const [activeIngredients, setActiveIngredients] = useState([]);
-  const [showResults, setShowResults] = useState(false);
+const SearchCard = ({ item, onPress }) => (
+  <TouchableOpacity style={styles.gridCard} onPress={onPress} activeOpacity={0.85}>
+    <View style={styles.gridCardImage} />
+    <View style={styles.gridCardInfo}>
+      <Text style={styles.gridCardTitle}>{item.name}</Text>
+      <StarRating rating={item.rating} />
+      <Text style={styles.gridCardTags}>{item.tags.join(' · ')}</Text>
+    </View>
+  </TouchableOpacity>
+);
 
-  const toggleIngredient = (name) => {
-    setActiveIngredients((prev) =>
-      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
-    );
-  };
+export default function SearchScreen({ navigation, route }) {
+  const [searchQuery, setSearchQuery] = useState(route?.params?.query ?? '');
+  const [activeChip, setActiveChip] = useState('Whiskey');
 
-  const handleSearch = () => {
-    // TODO Sprint 3: call recommendation API with query + activeIngredients
-    setShowResults(true);
-  };
-
-  const handleClear = () => {
-    setQuery('');
-    setActiveIngredients([]);
-    setShowResults(false);
-  };
+  // TODO: wire to GET /api/recipes/search?q=... in Sprint 3
+  const results = [
+    { id: '1', name: 'Old Fashioned', tags: ['Classic', 'Stirred'], rating: 4 },
+    { id: '2', name: 'Negroni',       tags: ['Bitter', 'Stirred'],  rating: 4 },
+    { id: '3', name: 'Manhattan',     tags: ['Rich', 'Stirred'],    rating: 4 },
+    { id: '4', name: 'Margarita',     tags: ['Citrus', 'Shaken'],   rating: 4 },
+  ];
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Search</Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.backgroundPrimary} />
 
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search cocktails..."
-        placeholderTextColor="#4A4A4A"
-        value={query}
-        onChangeText={setQuery}
-      />
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.screenTitle}>Search</Text>
+        <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={styles.iconGold}>♪</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.divider} />
 
-      {activeIngredients.length > 0 && (
-        <View style={styles.activeRow}>
-          <Text style={styles.activeLabel}>Selected: {activeIngredients.join(', ')}</Text>
-          <TouchableOpacity onPress={handleClear}>
-            <Text style={styles.clearText}>Clear all</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <Text style={styles.sectionTitle}>Ingredients</Text>
-      <View style={styles.chipGrid}>
-        {INGREDIENTS.map((name) => (
-          <TouchableOpacity
-            key={name}
-            style={[styles.chip, activeIngredients.includes(name) && styles.chipActive]}
-            onPress={() => toggleIngredient(name)}
-          >
-            <Text style={[styles.chipText, activeIngredients.includes(name) && styles.chipTextActive]}>
-              {name}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.searchBarWrapper}>
+        <View style={styles.searchDot} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Find a cocktail or ingredient..."
+          placeholderTextColor={Colors.textHint}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          autoFocus={!!route?.params?.query}
+        />
       </View>
 
-      <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-        <Text style={styles.searchButtonText}>Find Cocktails</Text>
-      </TouchableOpacity>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+        {CHIPS.map(chip => (
+          <TouchableOpacity key={chip} style={[styles.chip, activeChip === chip && styles.chipActive]} onPress={() => setActiveChip(chip)}>
+            <Text style={[styles.chipLabel, activeChip === chip && styles.chipLabelActive]}>{chip}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
-      {showResults && (
-        <View style={styles.results}>
-          <Text style={styles.sectionTitle}>Results</Text>
-          {PLACEHOLDER_RESULTS.map((r) => (
-            <View key={r.id} style={styles.resultCard}>
-              <Text style={styles.resultName}>{r.name}</Text>
-              <Text style={styles.resultMatch}>{r.match}</Text>
-            </View>
-          ))}
-          <Text style={styles.note}>Sprint 1 placeholder — real data wired in Sprint 3</Text>
-        </View>
-      )}
-    </ScrollView>
+      {results.length === 0
+        ? <View style={styles.emptyState}><Text style={styles.emptyText}>No matching recipes found</Text><Text style={styles.emptySubtext}>Try different ingredients</Text></View>
+        : <FlatList
+            data={results}
+            keyExtractor={i => i.id}
+            numColumns={2}
+            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={styles.gridContent}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => <SearchCard item={item} onPress={() => navigation.navigate('RecipeDetail', { cocktail: item })} />}
+          />
+      }
+
+      <BottomNavBar activeTab="Search" navigation={navigation} />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0A', padding: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#F5F0E8', marginTop: 40, marginBottom: 20 },
-  searchInput: {
-    backgroundColor: '#1C1C1C', color: '#F5F0E8', padding: 14,
-    borderRadius: 10, fontSize: 16, marginBottom: 16,
-  },
-  activeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  activeLabel: { color: '#8A8A8A', fontSize: 13 },
-  clearText: { color: '#C9A84C', fontSize: 13 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#F5F0E8', marginBottom: 12 },
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  chip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: '#2A2A2A', backgroundColor: '#141414',
-  },
-  chipActive: { borderColor: '#C9A84C', backgroundColor: '#C9A84C22' },
-  chipText: { color: '#8A8A8A', fontSize: 13 },
-  chipTextActive: { color: '#C9A84C' },
-  searchButton: {
-    backgroundColor: '#C9A84C', paddingVertical: 14, borderRadius: 10,
-    alignItems: 'center', marginBottom: 24,
-  },
-  searchButtonText: { color: '#0A0A0A', fontSize: 16, fontWeight: '600' },
-  results: { marginTop: 8 },
-  resultCard: {
-    backgroundColor: '#1C1C1C', padding: 16, borderRadius: 10,
-    marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between',
-  },
-  resultName: { color: '#F5F0E8', fontSize: 16, fontWeight: '600' },
-  resultMatch: { color: '#C9A84C', fontSize: 14 },
-  note: { color: '#4A4A4A', fontSize: 12, textAlign: 'center', marginTop: 12 },
+  container:        { flex: 1, backgroundColor: Colors.backgroundPrimary },
+  topBar:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  backArrow:        { color: Colors.goldPrimary, fontSize: 20 },
+  screenTitle:      { ...DisplayText.navTitle, color: Colors.textPrimary },
+  iconGold:         { color: Colors.goldPrimary, fontSize: 18 },
+  divider:          { height: 0.5, backgroundColor: Colors.goldPrimary, opacity: 0.4 },
+  searchBarWrapper: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.lg, marginTop: Spacing.lg, marginBottom: Spacing.md, paddingHorizontal: Spacing.md, paddingVertical: 14, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.goldPrimary, gap: Spacing.sm },
+  searchDot:        { width: 8, height: 8, borderRadius: Radius.full, backgroundColor: Colors.goldPrimary },
+  searchInput:      { flex: 1, ...BodyText.secondary, color: Colors.textPrimary, padding: 0 },
+  chipsRow:         { paddingHorizontal: Spacing.lg, gap: Spacing.sm, marginBottom: Spacing.md },
+  chip:             { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.borderDefault },
+  chipActive:       { backgroundColor: Colors.goldDark, borderColor: Colors.goldPrimary },
+  chipLabel:        { ...BodyText.xSmall, color: Colors.textSecondary },
+  chipLabelActive:  { color: Colors.textPrimary },
+  gridContent:      { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
+  gridRow:          { gap: Spacing.md, marginBottom: Spacing.md },
+  gridCard:         { flex: 1, backgroundColor: Colors.surfacePrimary, borderRadius: Radius.lg, borderWidth: 0.5, borderColor: Colors.borderDefault, overflow: 'hidden' },
+  gridCardImage:    { width: '100%', height: 150, backgroundColor: Colors.surfaceSecondary },
+  gridCardInfo:     { padding: Spacing.sm, gap: 4 },
+  gridCardTitle:    { ...DisplayText.cardTitleS, color: Colors.textPrimary },
+  stars:            { color: Colors.goldPrimary, fontSize: 11, letterSpacing: 1 },
+  gridCardTags:     { ...BodyText.xSmall, color: Colors.goldPrimary },
+  emptyState:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+  emptyText:        { ...DisplayText.cardTitle, color: Colors.textPrimary },
+  emptySubtext:     { ...BodyText.secondary, color: Colors.textSecondary },
 });
