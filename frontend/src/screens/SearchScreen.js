@@ -1,26 +1,26 @@
 // Alchemy AI — Search Screen
-// Sprint 1: UI skeleton with search bar. Sprint 3 will wire to CocktailDB / backend API.
+// SCRUM-63: Wired to backend cocktail search proxy
 
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import {
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, ScrollView, ActivityIndicator,
+} from 'react-native';
 
-// Placeholder ingredient chips for Sprint 1 UI demo
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+
 const INGREDIENTS = [
   'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
   'Lime', 'Lemon', 'Orange', 'Mint', 'Sugar', 'Bitters',
-];
-
-// Placeholder result cards — replace with API results in Sprint 3
-const PLACEHOLDER_RESULTS = [
-  { id: '1', name: 'Moscow Mule', match: '95%' },
-  { id: '2', name: 'Mojito', match: '88%' },
-  { id: '3', name: 'Old Fashioned', match: '82%' },
 ];
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [activeIngredients, setActiveIngredients] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const toggleIngredient = (name) => {
     setActiveIngredients((prev) =>
@@ -28,15 +28,32 @@ export default function SearchScreen() {
     );
   };
 
-  const handleSearch = () => {
-    // TODO Sprint 3: call recommendation API with query + activeIngredients
-    setShowResults(true);
+  const handleSearch = async () => {
+    if (!query && activeIngredients.length === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const searchTerm = query || activeIngredients.join(' ');
+      const res = await fetch(
+        `${BACKEND_URL}/api/cocktails/search?q=${encodeURIComponent(searchTerm)}`
+      );
+      const data = await res.json();
+      setResults(data);
+      setShowResults(true);
+    } catch (err) {
+      console.error('Search error:', err);
+      setError('Could not reach the server. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClear = () => {
     setQuery('');
     setActiveIngredients([]);
     setShowResults(false);
+    setResults([]);
+    setError(null);
   };
 
   return (
@@ -79,16 +96,25 @@ export default function SearchScreen() {
         <Text style={styles.searchButtonText}>Find Cocktails</Text>
       </TouchableOpacity>
 
-      {showResults && (
+      {loading && (
+        <ActivityIndicator color="#C9A84C" style={{ marginTop: 24 }} />
+      )}
+
+      {error && (
+        <Text style={styles.errorText}>{error}</Text>
+      )}
+
+      {showResults && !loading && (
         <View style={styles.results}>
-          <Text style={styles.sectionTitle}>Results</Text>
-          {PLACEHOLDER_RESULTS.map((r) => (
-            <View key={r.id} style={styles.resultCard}>
-              <Text style={styles.resultName}>{r.name}</Text>
-              <Text style={styles.resultMatch}>{r.match}</Text>
+          <Text style={styles.sectionTitle}>
+            {results.length > 0 ? `${results.length} Results` : 'No results found'}
+          </Text>
+          {results.map((r) => (
+            <View key={r.idDrink} style={styles.resultCard}>
+              <Text style={styles.resultName}>{r.strDrink}</Text>
+              <Text style={styles.resultCategory}>{r.strCategory}</Text>
             </View>
           ))}
-          <Text style={styles.note}>Sprint 1 placeholder — real data wired in Sprint 3</Text>
         </View>
       )}
     </ScrollView>
@@ -125,6 +151,6 @@ const styles = StyleSheet.create({
     marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between',
   },
   resultName: { color: '#F5F0E8', fontSize: 16, fontWeight: '600' },
-  resultMatch: { color: '#C9A84C', fontSize: 14 },
-  note: { color: '#4A4A4A', fontSize: 12, textAlign: 'center', marginTop: 12 },
+  resultCategory: { color: '#C9A84C', fontSize: 14 },
+  errorText: { color: '#FF6B6B', fontSize: 13, textAlign: 'center', marginTop: 12 },
 });
