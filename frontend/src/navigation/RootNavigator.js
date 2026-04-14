@@ -1,14 +1,14 @@
 // src/navigation/RootNavigator.js
 // Alchemy AI — Root Stack Navigator
-// Controls flow between Login and Main App (tabs)
-// Uses Firebase auth state to determine initial route
+// SCRUM-130: Added CocktailDetail screen to stack
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import LoginScreen  from '../screens/LoginScreen';
-import TabNavigator from './TabNavigator';
+import LoginScreen          from '../screens/LoginScreen';
+import TabNavigator         from './TabNavigator';
+import CocktailDetailScreen from '../screens/CocktailDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,8 +19,13 @@ export default function RootNavigator({ user }) {
         screenOptions={{ headerShown: false, animation: 'fade' }}
         initialRouteName={user ? 'MainTabs' : 'Login'}
       >
-        <Stack.Screen name="Login"     component={LoginScreen} />
-        <Stack.Screen name="MainTabs"  component={TabNavigator} />
+        <Stack.Screen name="Login"          component={LoginScreen} />
+        <Stack.Screen name="MainTabs"       component={TabNavigator} />
+        <Stack.Screen
+          name="CocktailDetail"
+          component={CocktailDetailScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
