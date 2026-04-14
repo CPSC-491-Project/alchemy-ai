@@ -1,46 +1,203 @@
 // Alchemy AI — Home Screen
-// Sprint 1: Placeholder layout. Sprint 2+ will populate from AI recommendation engine.
+// SCRUM-74: Wire carousel to GET /api/recommendations
+// Replaces Sprint 1 placeholder with live service call + mock fallback
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+} from 'react-native';
+import { fetchRecommendations } from '../services/recommendationsService';
 
-// Placeholder cocktail data — replace with API/DB call in Sprint 3
-const PLACEHOLDER_COCKTAILS = [
-  { id: '1', name: 'Smoked Negroni', tag: 'Classic Twist' },
-  { id: '2', name: 'Yuzu Highball', tag: 'Refreshing' },
-  { id: '3', name: 'Velvet Sour', tag: 'Smooth' },
+// ── Mock fallback — active until SCRUM-115 (Ethan's backend PR) merges ────────
+const MOCK_RECOMMENDATIONS = [
+  {
+    id: '11007',
+    name: 'Margarita',
+    thumbnail: 'https://www.thecocktaildb.com/images/media/drink/5noda61589575158.jpg',
+    matchPercentage: 95,
+    missingIngredients: [],
+    category: 'Ordinary Drink',
+  },
+  {
+    id: '11000',
+    name: 'Mojito',
+    thumbnail: 'https://www.thecocktaildb.com/images/media/drink/metwgh1606770327.jpg',
+    matchPercentage: 80,
+    missingIngredients: ['Mint'],
+    category: 'Cocktail',
+  },
+  {
+    id: '178319',
+    name: 'Whiskey Sour',
+    thumbnail: 'https://www.thecocktaildb.com/images/media/drink/hbkfsh1589574990.jpg',
+    matchPercentage: 70,
+    missingIngredients: ['Egg White'],
+    category: 'Ordinary Drink',
+  },
 ];
+// ─────────────────────────────────────────────────────────────────────────────
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
+  const [recommendations, setRecommendations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [usingMock, setUsingMock] = useState(false);
+
+  const loadRecommendations = useCallback(async () => {
+    try {
+      const data = await fetchRecommendations();
+      if (data.length > 0) {
+        setRecommendations(data);
+        setUsingMock(false);
+      } else {
+        setRecommendations(MOCK_RECOMMENDATIONS);
+        setUsingMock(true);
+      }
+    } catch {
+      setRecommendations(MOCK_RECOMMENDATIONS);
+      setUsingMock(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRecommendations();
+  }, [loadRecommendations]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadRecommendations();
+  }, [loadRecommendations]);
+
+  const renderCard = ({ item }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => navigation?.navigate('RecipeDetail', { cocktail: item })}
+      accessibilityLabel={`View recipe for ${item.name}`}
+    >
+      <Image source={{ uri: item.thumbnail }} style={styles.cardImage} />
+      <View style={styles.cardBody}>
+        <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.cardMatch}>{item.matchPercentage}% match</Text>
+        {item.missingIngredients?.length > 0 && (
+          <Text style={styles.cardMissing} numberOfLines={1}>
+            Missing: {item.missingIngredients.join(', ')}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#C9A84C" />
+      }
+    >
       <Text style={styles.greeting}>Good evening</Text>
       <Text style={styles.subtitle}>What are you in the mood for?</Text>
 
-      <Text style={styles.sectionTitle}>Featured Tonight</Text>
+      <Text style={styles.sectionTitle}>Recommended for You</Text>
 
-      {PLACEHOLDER_COCKTAILS.map((c) => (
-        <View key={c.id} style={styles.card}>
-          <Text style={styles.cardTag}>{c.tag}</Text>
-          <Text style={styles.cardName}>{c.name}</Text>
-        </View>
-      ))}
+      {usingMock && (
+        <Text style={styles.mockBanner}>
+          ⚠ Mock data — live results load once SCRUM-115 merges
+        </Text>
+      )}
 
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>Sprint 1 skeleton — data integration coming Sprint 3</Text>
-      </View>
+      {loading ? (
+        <ActivityIndicator color="#C9A84C" style={{ marginTop: 24 }} />
+      ) : (
+        <FlatList
+          data={recommendations}
+          keyExtractor={(item) => item.id}
+          renderItem={renderCard}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carousel}
+        />
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0A', padding: 20 },
-  greeting: { fontSize: 28, fontWeight: 'bold', color: '#F5F0E8', marginTop: 40 },
-  subtitle: { fontSize: 14, color: '#8A8A8A', marginTop: 4, marginBottom: 30 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: '#F5F0E8', marginBottom: 16 },
-  card: { backgroundColor: '#1C1C1C', padding: 20, borderRadius: 12, marginBottom: 12 },
-  cardTag: { fontSize: 12, color: '#C9A84C', marginBottom: 6 },
-  cardName: { fontSize: 20, fontWeight: 'bold', color: '#F5F0E8' },
-  badge: { marginTop: 20, padding: 12, borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 8, alignItems: 'center' },
-  badgeText: { fontSize: 12, color: '#4A4A4A' },
+  container: {
+    flex: 1,
+    backgroundColor: '#0D0D0D',
+    paddingTop: 24,
+  },
+  greeting: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    fontWeight: '300',
+    paddingHorizontal: 20,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#888888',
+    paddingHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+  },
+  mockBanner: {
+    fontSize: 11,
+    color: '#C9A84C',
+    paddingHorizontal: 20,
+    marginBottom: 8,
+    opacity: 0.7,
+  },
+  carousel: {
+    paddingHorizontal: 20,
+    gap: 12,
+    paddingBottom: 24,
+  },
+  card: {
+    width: 200,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  cardImage: {
+    width: '100%',
+    height: 130,
+  },
+  cardBody: {
+    padding: 12,
+  },
+  cardName: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  cardMatch: {
+    fontSize: 12,
+    color: '#C9A84C',
+  },
+  cardMissing: {
+    fontSize: 11,
+    color: '#888888',
+    marginTop: 2,
+  },
 });
