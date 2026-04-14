@@ -1,6 +1,7 @@
+// SCRUM-63: Cocktail proxy routes — forwards requests to TheCocktailDB
 const express = require('express');
 const router = express.Router();
-const fetch = require('node-fetch');
+// fetch is globally available in Node 18 — no import needed
 
 const COCKTAILDB_BASE = 'https://www.thecocktaildb.com/api/json/v1/1';
 
