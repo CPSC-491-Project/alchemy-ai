@@ -19,6 +19,10 @@ app.get("/health", (req, res) => {
 const cabinetRouter = require("./routes/cabinet");
 app.use("/api/cabinet", cabinetRouter);
 
+// SCRUM-130: Cocktails routes
+const cocktailsRouter = require("./routes/cocktails");
+app.use("/api/cocktails", cocktailsRouter);
+
 // SCRUM-52: Profile routes
 const profileRouter = require("./routes/profile");
 app.use("/api/me", profileRouter);
