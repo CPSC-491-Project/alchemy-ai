@@ -32,6 +32,7 @@ jobs:
 
       - name: Run tests
         working-directory: backend
-        run: npm test
+        run: npm test -- --forceExit
         env:
           NODE_ENV: test
+          GOOGLE_APPLICATION_CREDENTIALS: /dev/null
