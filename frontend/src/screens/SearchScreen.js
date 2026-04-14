@@ -7,7 +7,7 @@ import {
   StyleSheet, ScrollView, ActivityIndicator,
 } from 'react-native';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
 
 const INGREDIENTS = [
   'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
