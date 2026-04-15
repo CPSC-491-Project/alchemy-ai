@@ -27,4 +27,17 @@ app.use("/api/cocktails", cocktailsRouter);
 const profileRouter = require("./routes/profile");
 app.use("/api/me", profileRouter);
 
+// SCRUM-142: 404 catch-all — no route matched
+app.use((req, res) => {
+  res.status(404).json({ error: "Not Found", path: req.originalUrl });
+});
+
+// SCRUM-142: Global error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(err.status || 500).json({
+    error: err.message || "Internal Server Error",
+  });
+});
+
 module.exports = app;
