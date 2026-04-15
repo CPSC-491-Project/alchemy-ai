@@ -9,6 +9,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import LoginScreen  from '../screens/LoginScreen';
 import TabNavigator from './TabNavigator';
+import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,6 +22,7 @@ export default function RootNavigator({ user }) {
       >
         <Stack.Screen name="Login"     component={LoginScreen} />
         <Stack.Screen name="MainTabs"  component={TabNavigator} />
+        <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
