@@ -6,10 +6,11 @@ import {
   View, Text, Image, ScrollView,
   StyleSheet, ActivityIndicator, TouchableOpacity,
 } from 'react-native';
+import { Colors, Typography, Spacing, Radius } from '../theme';
 import { getCocktailById } from '../services/cocktailService';
 
 export default function CocktailDetailScreen({ route, navigation }) {
-  const { id, name } = route.params;
+  const { id } = route.params;
   const [cocktail, setCocktail] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
@@ -24,7 +25,7 @@ export default function CocktailDetailScreen({ route, navigation }) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#C9A84C" size="large" />
+        <ActivityIndicator color={Colors.accent} size="large" />
       </View>
     );
   }
@@ -102,48 +103,49 @@ export default function CocktailDetailScreen({ route, navigation }) {
           </>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={styles.bottomSpacer} />
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: '#0A0A0A' },
-  center:      { flex: 1, backgroundColor: '#0A0A0A', alignItems: 'center', justifyContent: 'center' },
-  hero:        { width: '100%', height: 300 },
-  heroFallback:{ backgroundColor: '#1C1C1C', alignItems: 'center', justifyContent: 'center' },
-  heroIcon:    { fontSize: 64, opacity: 0.3 },
-  backOverlay: {
-    position: 'absolute', top: 48, left: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20,
+  container:    { flex: 1, backgroundColor: Colors.background },
+  center:       { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
+  hero:         { width: '100%', height: 300 },
+  heroFallback: { backgroundColor: Colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
+  heroIcon:     { fontSize: 64, opacity: 0.3 },
+  backOverlay:  {
+    position: 'absolute', top: 48, left: Spacing.md,
+    backgroundColor: Colors.accentDim, borderRadius: Radius.full,
     paddingHorizontal: 14, paddingVertical: 8,
   },
-  backOverlayText: { color: '#F5F0E8', fontSize: 18 },
-  content:     { padding: 20 },
-  title:       { fontSize: 28, fontWeight: 'bold', color: '#F5F0E8', marginBottom: 12 },
-  badgeRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
-  badge:       {
-    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
-    borderWidth: 1, borderColor: '#2A2A2A', backgroundColor: '#1C1C1C',
+  backOverlayText: { ...Typography.body, color: Colors.textPrimary, fontSize: 18 },
+  content:      { padding: Spacing.md },
+  title:        { ...Typography.heading, fontSize: 28, marginBottom: Spacing.sm },
+  badgeRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.lg },
+  badge:        {
+    paddingHorizontal: 12, paddingVertical: 5, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surfaceRaised,
   },
-  badgeGold:   { borderColor: '#C9A84C', backgroundColor: '#C9A84C22' },
-  badgeText:   { color: '#8A8A8A', fontSize: 12 },
-  badgeTextGold: { color: '#C9A84C' },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#F5F0E8', marginBottom: 12 },
+  badgeGold:      { borderColor: Colors.accent, backgroundColor: Colors.accentGlow },
+  badgeText:      { ...Typography.bodySmall },
+  badgeTextGold:  { color: Colors.accent },
+  sectionTitle:   { ...Typography.label, marginBottom: Spacing.sm },
   ingredientList: {
-    backgroundColor: '#1C1C1C', borderRadius: 10,
-    marginBottom: 24, overflow: 'hidden',
+    backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md,
+    marginBottom: Spacing.lg, overflow: 'hidden',
   },
   ingredientRow: {
     flexDirection: 'row', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#2A2A2A',
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  ingredientName:    { color: '#F5F0E8', fontSize: 15 },
-  ingredientMeasure: { color: '#C9A84C', fontSize: 15 },
-  instructions: { color: '#A0A0A0', fontSize: 15, lineHeight: 24 },
-  errorText:    { color: '#FF6B6B', fontSize: 15, marginBottom: 16 },
-  backBtn:      { paddingVertical: 10, paddingHorizontal: 20 },
-  backBtnText:  { color: '#C9A84C', fontSize: 15 },
+  ingredientName:    { ...Typography.body },
+  ingredientMeasure: { ...Typography.body, color: Colors.accent },
+  instructions:      { ...Typography.body, color: Colors.textSecondary, lineHeight: 24 },
+  errorText:         { ...Typography.body, color: Colors.error, marginBottom: Spacing.md },
+  backBtn:           { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md },
+  backBtnText:       { ...Typography.body, color: Colors.accent },
+  bottomSpacer:      { height: Spacing.xl },
 });

@@ -7,6 +7,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, FlatList, ActivityIndicator,
 } from 'react-native';
+import { Colors, Typography, Spacing, Radius } from '../theme';
 import CocktailCard from '../components/CocktailCard';
 import { searchCocktails, filterByIngredient } from '../services/cocktailService';
 
@@ -18,13 +19,13 @@ const INGREDIENTS = [
 const DEBOUNCE_MS = 400;
 
 export default function SearchScreen({ navigation }) {
-  const [query, setQuery]                   = useState('');
+  const [query, setQuery]                       = useState('');
   const [activeIngredient, setActiveIngredient] = useState(null);
-  const [results, setResults]               = useState([]);
-  const [loading, setLoading]               = useState(false);
-  const [error, setError]                   = useState(null);
-  const [searched, setSearched]             = useState(false);
-  const debounceTimer                       = useRef(null);
+  const [results, setResults]                   = useState([]);
+  const [loading, setLoading]                   = useState(false);
+  const [error, setError]                       = useState(null);
+  const [searched, setSearched]                 = useState(false);
+  const debounceTimer                           = useRef(null);
 
   // ── Debounced text search ──────────────────────────────────────────────────
   const runSearch = useCallback(async (q) => {
@@ -35,7 +36,7 @@ export default function SearchScreen({ navigation }) {
       const data = await searchCocktails(q);
       setResults(data);
       setSearched(true);
-    } catch (err) {
+    } catch (_err) {
       setError('Could not reach the server. Please try again.');
     } finally {
       setLoading(false);
@@ -43,7 +44,7 @@ export default function SearchScreen({ navigation }) {
   }, []);
 
   useEffect(() => {
-    if (activeIngredient) return; // ingredient mode — don't also text-search
+    if (activeIngredient) return;
     clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => runSearch(query), DEBOUNCE_MS);
     return () => clearTimeout(debounceTimer.current);
@@ -65,7 +66,7 @@ export default function SearchScreen({ navigation }) {
       const data = await filterByIngredient(name);
       setResults(data);
       setSearched(true);
-    } catch (err) {
+    } catch (_err) {
       setError('Could not reach the server. Please try again.');
     } finally {
       setLoading(false);
@@ -84,22 +85,36 @@ export default function SearchScreen({ navigation }) {
     navigation.navigate('CocktailDetail', { id: item.idDrink, name: item.strDrink });
   };
 
+  const renderCard = ({ item }) => (
+    <CocktailCard
+      drinkName={item.strDrink}
+      imageUri={item.strDrinkThumb || null}
+      tags={[item.strCategory, item.strAlcoholic].filter(Boolean)}
+      onPress={() => handleCardPress(item)}
+      style={styles.card}
+    />
+  );
+
+  const renderHeader = () => (
+    <Text style={styles.sectionTitle}>
+      {results.length > 0 ? `${results.length} Results` : 'No results found'}
+    </Text>
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Search</Text>
 
-      {/* Search Input */}
       <TextInput
         style={styles.searchInput}
         placeholder="Search cocktails..."
-        placeholderTextColor="#4A4A4A"
+        placeholderTextColor={Colors.textMuted}
         value={query}
         onChangeText={(t) => { setActiveIngredient(null); setQuery(t); }}
         returnKeyType="search"
       />
 
-      {/* Active filter indicator */}
       {(activeIngredient || query) && (
         <View style={styles.activeRow}>
           <Text style={styles.activeLabel}>
@@ -111,7 +126,6 @@ export default function SearchScreen({ navigation }) {
         </View>
       )}
 
-      {/* Ingredient Chips */}
       <Text style={styles.sectionTitle}>Filter by Ingredient</Text>
       <View style={styles.chipGrid}>
         {INGREDIENTS.map((name) => (
@@ -127,13 +141,9 @@ export default function SearchScreen({ navigation }) {
         ))}
       </View>
 
-      {/* Loading */}
-      {loading && <ActivityIndicator color="#C9A84C" style={{ marginTop: 24 }} />}
-
-      {/* Error */}
+      {loading && <ActivityIndicator color={Colors.accent} style={styles.loader} />}
       {error && <Text style={styles.errorText}>{error}</Text>}
 
-      {/* Results */}
       {!loading && searched && (
         <FlatList
           data={results}
@@ -141,21 +151,9 @@ export default function SearchScreen({ navigation }) {
           numColumns={2}
           columnWrapperStyle={styles.row}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <Text style={styles.sectionTitle}>
-              {results.length > 0 ? `${results.length} Results` : 'No results found'}
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <CocktailCard
-              drinkName={item.strDrink}
-              imageUri={item.strDrinkThumb || null}
-              tags={[item.strCategory, item.strAlcoholic].filter(Boolean)}
-              onPress={() => handleCardPress(item)}
-              style={styles.card}
-            />
-          )}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          ListHeaderComponent={renderHeader}
+          renderItem={renderCard}
+          contentContainerStyle={styles.listContent}
         />
       )}
     </View>
@@ -163,25 +161,27 @@ export default function SearchScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container:    { flex: 1, backgroundColor: '#0A0A0A', padding: 20 },
-  title:        { fontSize: 28, fontWeight: 'bold', color: '#F5F0E8', marginTop: 40, marginBottom: 16 },
+  container:    { flex: 1, backgroundColor: Colors.background, padding: Spacing.md },
+  title:        { ...Typography.heading, fontSize: 28, marginTop: Spacing.xl, marginBottom: Spacing.md },
   searchInput:  {
-    backgroundColor: '#1C1C1C', color: '#F5F0E8', padding: 14,
-    borderRadius: 10, fontSize: 16, marginBottom: 12,
+    backgroundColor: Colors.surfaceRaised, color: Colors.textPrimary,
+    padding: 14, borderRadius: Radius.md, fontSize: 16, marginBottom: 12,
   },
   activeRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  activeLabel:  { color: '#8A8A8A', fontSize: 13 },
-  clearText:    { color: '#C9A84C', fontSize: 13 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#F5F0E8', marginBottom: 10 },
-  chipGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  activeLabel:  { ...Typography.bodySmall },
+  clearText:    { ...Typography.bodySmall, color: Colors.accent },
+  sectionTitle: { ...Typography.label, marginBottom: Spacing.sm },
+  chipGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
   chip:         {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: '#2A2A2A', backgroundColor: '#141414',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
   },
-  chipActive:   { borderColor: '#C9A84C', backgroundColor: '#C9A84C22' },
-  chipText:     { color: '#8A8A8A', fontSize: 13 },
-  chipTextActive: { color: '#C9A84C' },
-  row:          { justifyContent: 'space-between', marginBottom: 16 },
-  card:         { width: '48%' },
-  errorText:    { color: '#FF6B6B', fontSize: 13, textAlign: 'center', marginTop: 12 },
+  chipActive:     { borderColor: Colors.accent, backgroundColor: Colors.accentGlow },
+  chipText:       { ...Typography.bodySmall },
+  chipTextActive: { color: Colors.accent },
+  loader:         { marginTop: Spacing.lg },
+  row:            { justifyContent: 'space-between', marginBottom: Spacing.md },
+  card:           { width: '48%' },
+  errorText:      { ...Typography.bodySmall, color: Colors.error, textAlign: 'center', marginTop: 12 },
+  listContent:    { paddingBottom: Spacing.xl },
 });
