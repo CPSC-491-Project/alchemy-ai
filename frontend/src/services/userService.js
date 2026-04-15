@@ -4,11 +4,11 @@
 //            Removed cabinet:[] array field — cabinet lives in Firestore subcollection
 //            per SCRUM-70 schema (users/{uid}/cabinet/{ingredientId}).
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const API_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 if (!API_BASE_URL) {
   console.error(
-    '[userService] EXPO_PUBLIC_API_URL is not set. ' +
+    '[userService] EXPO_PUBLIC_BACKEND_URL is not set. ' +
       'Copy frontend/.env.example to frontend/.env and fill in the value.'
   );
 }
