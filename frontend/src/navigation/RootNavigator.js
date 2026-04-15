@@ -19,7 +19,7 @@ import CocktailDetailScreen from '../screens/CocktailDetailScreen';
 let RecipeDetailScreen = null;
 let CabinetScreen = null;
 try { RecipeDetailScreen = require('../screens/RecipeDetailScreen').default; } catch (_e) { RecipeDetailScreen = null; }
-try { CabinetScreen = require('../screens/CabinetScreen').default; } catch (_e) { RecipeDetailScreen = null; }
+try { CabinetScreen = require('../screens/CabinetScreen').default; } catch (_e) { CabinetScreen = null; }
 
 const Stack = createNativeStackNavigator();
 
