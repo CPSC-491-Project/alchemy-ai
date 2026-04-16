@@ -1,7 +1,8 @@
 // frontend/src/screens/CabinetScreen.js
 // SCRUM-74 — Frontend: Build Ingredient Cabinet screen UI
 // SCRUM-75 — Frontend: Wire Ingredient Cabinet screen to backend API
-// Assigned to: Allisa Warren
+// SCRUM-148 — Cabinet UI Styling Improvements: category filtering + sorting
+// Assigned to: Allisa Warren / Mohamed Alqubaisi
 //
 // Displays the user's ingredient cabinet as dark-theme cards.
 // Calls cabinetService.js for all GET / POST / DELETE operations.
@@ -22,6 +23,7 @@ import {
   SafeAreaView,
   Alert,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius } from '../theme/index';
@@ -30,11 +32,18 @@ import { getCabinet, addIngredient, removeIngredient } from '../services/cabinet
 // ─── Category options matching the Firestore schema (SCRUM-70) ───────────────
 const CATEGORIES = ['spirit', 'mixer', 'garnish'];
 
+// ─── Filter options including 'all' ──────────────────────────────────────────
+const FILTER_OPTIONS = ['all', 'spirit', 'mixer', 'garnish'];
+
 export default function CabinetScreen() {
   const [ingredients, setIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+
+  // Filter + sort state
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [sortOption, setSortOption] = useState('date');
 
   // Add-ingredient modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -68,6 +77,23 @@ export default function CabinetScreen() {
     setRefreshing(true);
     loadCabinet();
   }
+
+  // ─── Filter logic ───────────────────────────────────────────────────────────
+  const filteredIngredients = ingredients.filter((item) => {
+    if (selectedCategory === 'all') return true;
+    return item.category === selectedCategory;
+  });
+
+  // ─── Sort logic (applied after filter) ─────────────────────────────────────
+  const sortedIngredients = [...filteredIngredients].sort((a, b) => {
+    if (sortOption === 'name') {
+      return a.name.localeCompare(b.name);
+    }
+    // default: dateAdded descending (latest first), handle undefined safely
+    const aTime = a.dateAdded?.seconds ? a.dateAdded.seconds * 1000 : 0;
+    const bTime = b.dateAdded?.seconds ? b.dateAdded.seconds * 1000 : 0;
+    return new Date(bTime) - new Date(aTime);
+  });
 
   // ─── Delete ingredient ──────────────────────────────────────────────────────
   function confirmDelete(item) {
@@ -125,6 +151,56 @@ export default function CabinetScreen() {
     }
   }
 
+  // ─── Filter + sort row (used as FlatList ListHeaderComponent) ───────────────
+  function renderListHeader() {
+    return (
+      <View style={styles.filterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {FILTER_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[
+                styles.filterChip,
+                selectedCategory === option && styles.filterChipActive,
+              ]}
+              onPress={() => setSelectedCategory(option)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedCategory === option }}
+              accessibilityLabel={`Filter by ${option}`}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  selectedCategory === option && styles.filterTextActive,
+                ]}
+              >
+                {option}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          {/* Sort toggle — right side of the same row */}
+          <TouchableOpacity
+            style={styles.sortButton}
+            onPress={() =>
+              setSortOption((prev) => (prev === 'name' ? 'date' : 'name'))
+            }
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by ${sortOption === 'name' ? 'date' : 'name'}`}
+          >
+            <Text style={styles.sortButtonText}>
+              Sort: {sortOption === 'name' ? 'A–Z' : 'Date'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
   // ─── Render ingredient card ─────────────────────────────────────────────────
   function renderIngredient({ item }) {
     return (
@@ -135,7 +211,9 @@ export default function CabinetScreen() {
           </Text>
           <Text style={styles.ingredientMeta}>
             {item.category}
-            {item.quantity ? `  ·  ${item.quantity}${item.unit ? ' ' + item.unit : ''}` : ''}
+            {item.quantity
+              ? `  ·  ${item.quantity}${item.unit ? ' ' + item.unit : ''}`
+              : ''}
           </Text>
         </View>
         <TouchableOpacity
@@ -181,19 +259,23 @@ export default function CabinetScreen() {
         </View>
       )}
 
-      {/* Ingredient list */}
-      {ingredients.length === 0 && !error ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Your cabinet is empty.</Text>
-          <Text style={styles.emptySubtext}>
-            Tap "+ Add" to start building your ingredient list.
-          </Text>
-        </View>
+      {/* Ingredient list — filter row lives inside as ListHeaderComponent */}
+      {sortedIngredients.length === 0 && !error ? (
+        <>
+          {renderListHeader()}
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>Your cabinet is empty.</Text>
+            <Text style={styles.emptySubtext}>
+              Tap "+ Add" to start building your ingredient list.
+            </Text>
+          </View>
+        </>
       ) : (
         <FlatList
-          data={ingredients}
+          data={sortedIngredients}
           keyExtractor={(item) => item.id}
           renderItem={renderIngredient}
+          ListHeaderComponent={renderListHeader}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -347,8 +429,49 @@ const styles = StyleSheet.create({
     ...Typography.bodySmall,
     color: Colors.error,
   },
-  list: {
+  // ─── Filter row ─────────────────────────────────────────────────────────────
+  filterContainer: {
+    marginBottom: Spacing.sm,
+  },
+  filterRow: {
+    flexDirection: 'row',
     paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  filterChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  filterText: {
+    ...Typography.labelSmall,
+    color: Colors.textMuted,
+    textTransform: 'capitalize',
+  },
+  filterTextActive: {
+    color: Colors.background,
+  },
+  sortButton: {
+    marginLeft: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  sortButtonText: {
+    ...Typography.labelSmall,
+    color: Colors.textMuted,
+  },
+  // ─── List ────────────────────────────────────────────────────────────────────
+  list: {
     paddingBottom: Spacing.xl,
   },
   card: {
@@ -357,6 +480,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     marginBottom: Spacing.sm,
+    marginHorizontal: Spacing.lg,
     padding: Spacing.md,
   },
   cardContent: {
@@ -397,7 +521,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
   },
-  // Modal
+  // ─── Modal ───────────────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
