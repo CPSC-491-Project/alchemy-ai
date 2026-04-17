@@ -10,6 +10,7 @@ import {
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import CocktailCard from '../components/CocktailCard';
 import { searchCocktails, filterByIngredient } from '../services/cocktailService';
+import EmptyState from '../components/EmptyState';
 
 const INGREDIENTS = [
   'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
@@ -145,22 +146,33 @@ export default function SearchScreen({ navigation }) {
       {error && <Text style={styles.errorText}>{error}</Text>}
 
       {!loading && searched && (
-        <FlatList
-          data={results}
-          keyExtractor={(item) => item.idDrink}
-          numColumns={2}
-          columnWrapperStyle={styles.row}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={renderHeader}
-          renderItem={renderCard}
-          contentContainerStyle={styles.listContent}
-        />
-      )}
+            <FlatList
+              data={results}
+              keyExtractor={(item) => item.idDrink}
+              numColumns={2}
+              columnWrapperStyle={results.length > 0 ? styles.row : null}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={results.length > 0 ? renderHeader : null}
+              ListEmptyComponent={
+                <EmptyState
+                  icon="🔍"
+                  message="No results found"
+                  subtext="Try searching for another cocktail"
+                />
+              }
+              renderItem={renderCard}
+              contentContainerStyle={[
+                styles.listContent,
+                results.length === 0 && styles.listEmpty,
+              ]}
+            />
+          )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  listEmpty: { flex: 1,},
   container:    { flex: 1, backgroundColor: Colors.background, padding: Spacing.md },
   title:        { ...Typography.heading, fontSize: 28, marginTop: Spacing.xl, marginBottom: Spacing.md },
   searchInput:  {
