@@ -28,6 +28,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius } from '../theme/index';
 import { getCabinet, addIngredient, removeIngredient } from '../services/cabinetService';
+import EmptyState from '../components/EmptyState';
+
 
 // ─── Category options matching the Firestore schema (SCRUM-70) ───────────────
 const CATEGORIES = ['spirit', 'mixer', 'garnish'];
@@ -260,32 +262,32 @@ export default function CabinetScreen() {
       )}
 
       {/* Ingredient list — filter row lives inside as ListHeaderComponent */}
-      {sortedIngredients.length === 0 && !error ? (
-        <>
-          {renderListHeader()}
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Your cabinet is empty.</Text>
-            <Text style={styles.emptySubtext}>
-              Tap "+ Add" to start building your ingredient list.
-            </Text>
-          </View>
-        </>
-      ) : (
-        <FlatList
-          data={sortedIngredients}
-          keyExtractor={(item) => item.id}
-          renderItem={renderIngredient}
-          ListHeaderComponent={renderListHeader}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.accent}
-            />
-          }
-        />
-      )}
+      {!error && (
+          <FlatList
+            data={sortedIngredients}
+            keyExtractor={(item) => item.id}
+            renderItem={renderIngredient}
+            ListHeaderComponent={renderListHeader}
+            ListEmptyComponent={
+              <EmptyState
+                icon="🍸"
+                message="No ingredients in your cabinet"
+                subtext="Add ingredients to start discovering cocktails"
+              />
+            }
+            contentContainerStyle={[
+              styles.list,
+              sortedIngredients.length === 0 && styles.listEmpty,
+            ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={Colors.accent}
+              />
+            }
+          />
+        )}
 
       {/* Add Ingredient Modal */}
       <Modal
@@ -386,6 +388,9 @@ export default function CabinetScreen() {
 
 // ─── Styles — all values from theme/index.js tokens ─────────────────────────
 const styles = StyleSheet.create({
+  listEmpty: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.background,

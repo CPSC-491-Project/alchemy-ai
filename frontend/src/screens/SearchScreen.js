@@ -11,6 +11,7 @@ import {
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import CocktailCard from '../components/CocktailCard';
 import { searchCocktails, filterByIngredient } from '../services/cocktailService';
+import EmptyState from '../components/EmptyState';
 
 const INGREDIENTS = [
   'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
@@ -166,6 +167,7 @@ export default function SearchScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  listEmpty: { flex: 1,},
   container:    { flex: 1, backgroundColor: Colors.background, padding: Spacing.md },
   title:        { ...Typography.heading, fontSize: 28, marginTop: Spacing.xl, marginBottom: Spacing.md },
   searchInput:  {
