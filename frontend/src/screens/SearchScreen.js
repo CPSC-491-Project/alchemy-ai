@@ -1,47 +1,72 @@
-// Alchemy AI — Search Screen
-// SCRUM-63: Wired to backend cocktail search proxy
+// SCRUM-130: Search Screen — live debounced search + ingredient filter chips
+// Wired to backend proxy GET /api/cocktails/search and /api/cocktails/filter
+// Results rendered with CocktailCard; tapping navigates to CocktailDetailScreen
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, ActivityIndicator,
+  StyleSheet, FlatList, ActivityIndicator,
 } from 'react-native';
-
-const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
+import { Colors, Typography, Spacing, Radius } from '../theme';
+import CocktailCard from '../components/CocktailCard';
+import { searchCocktails, filterByIngredient } from '../services/cocktailService';
 
 const INGREDIENTS = [
   'Vodka', 'Gin', 'Rum', 'Tequila', 'Whiskey', 'Bourbon',
   'Lime', 'Lemon', 'Orange', 'Mint', 'Sugar', 'Bitters',
 ];
 
-export default function SearchScreen() {
-  const [query, setQuery] = useState('');
-  const [activeIngredients, setActiveIngredients] = useState([]);
-  const [showResults, setShowResults] = useState(false);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+const DEBOUNCE_MS = 400;
 
-  const toggleIngredient = (name) => {
-    setActiveIngredients((prev) =>
-      prev.includes(name) ? prev.filter((i) => i !== name) : [...prev, name]
-    );
-  };
+export default function SearchScreen({ navigation }) {
+  const [query, setQuery]                       = useState('');
+  const [activeIngredient, setActiveIngredient] = useState(null);
+  const [results, setResults]                   = useState([]);
+  const [loading, setLoading]                   = useState(false);
+  const [error, setError]                       = useState(null);
+  const [searched, setSearched]                 = useState(false);
+  const debounceTimer                           = useRef(null);
 
-  const handleSearch = async () => {
-    if (!query && activeIngredients.length === 0) return;
+  // ── Debounced text search ──────────────────────────────────────────────────
+  const runSearch = useCallback(async (q) => {
+    if (!q.trim()) { setResults([]); setSearched(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const searchTerm = query || activeIngredients.join(' ');
-      const res = await fetch(
-        `${BACKEND_URL}/api/cocktails/search?q=${encodeURIComponent(searchTerm)}`
-      );
-      const data = await res.json();
+      const data = await searchCocktails(q);
       setResults(data);
-      setShowResults(true);
-    } catch (err) {
-      console.error('Search error:', err);
+      setSearched(true);
+    } catch (_err) {
+      setError('Could not reach the server. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeIngredient) return;
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => runSearch(query), DEBOUNCE_MS);
+    return () => clearTimeout(debounceTimer.current);
+  }, [query, activeIngredient, runSearch]);
+
+  // ── Ingredient chip filter ─────────────────────────────────────────────────
+  const handleIngredientTap = async (name) => {
+    if (activeIngredient === name) {
+      setActiveIngredient(null);
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    setActiveIngredient(name);
+    setQuery('');
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await filterByIngredient(name);
+      setResults(data);
+      setSearched(true);
+    } catch (_err) {
       setError('Could not reach the server. Please try again.');
     } finally {
       setLoading(false);
@@ -50,107 +75,113 @@ export default function SearchScreen() {
 
   const handleClear = () => {
     setQuery('');
-    setActiveIngredients([]);
-    setShowResults(false);
+    setActiveIngredient(null);
     setResults([]);
+    setSearched(false);
     setError(null);
   };
 
+  const handleCardPress = (item) => {
+    navigation.navigate('CocktailDetail', { id: item.idDrink, name: item.strDrink });
+  };
+
+  const renderCard = ({ item }) => (
+    <CocktailCard
+      drinkName={item.strDrink}
+      imageUri={item.strDrinkThumb || null}
+      tags={[item.strCategory, item.strAlcoholic].filter(Boolean)}
+      onPress={() => handleCardPress(item)}
+      style={styles.card}
+    />
+  );
+
+  const renderHeader = () => (
+    <Text style={styles.sectionTitle}>
+      {results.length > 0 ? `${results.length} Results` : 'No results found'}
+    </Text>
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.title}>Search</Text>
 
       <TextInput
         style={styles.searchInput}
         placeholder="Search cocktails..."
-        placeholderTextColor="#4A4A4A"
+        placeholderTextColor={Colors.textMuted}
         value={query}
-        onChangeText={setQuery}
+        onChangeText={(t) => { setActiveIngredient(null); setQuery(t); }}
+        returnKeyType="search"
       />
 
-      {activeIngredients.length > 0 && (
+      {(activeIngredient || query) && (
         <View style={styles.activeRow}>
-          <Text style={styles.activeLabel}>Selected: {activeIngredients.join(', ')}</Text>
+          <Text style={styles.activeLabel}>
+            {activeIngredient ? `Filtered by: ${activeIngredient}` : `Searching: "${query}"`}
+          </Text>
           <TouchableOpacity onPress={handleClear}>
-            <Text style={styles.clearText}>Clear all</Text>
+            <Text style={styles.clearText}>Clear</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>Ingredients</Text>
+      <Text style={styles.sectionTitle}>Filter by Ingredient</Text>
       <View style={styles.chipGrid}>
         {INGREDIENTS.map((name) => (
           <TouchableOpacity
             key={name}
-            style={[styles.chip, activeIngredients.includes(name) && styles.chipActive]}
-            onPress={() => toggleIngredient(name)}
+            style={[styles.chip, activeIngredient === name && styles.chipActive]}
+            onPress={() => handleIngredientTap(name)}
           >
-            <Text style={[styles.chipText, activeIngredients.includes(name) && styles.chipTextActive]}>
+            <Text style={[styles.chipText, activeIngredient === name && styles.chipTextActive]}>
               {name}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-        <Text style={styles.searchButtonText}>Find Cocktails</Text>
-      </TouchableOpacity>
+      {loading && <ActivityIndicator color={Colors.accent} style={styles.loader} />}
+      {error && <Text style={styles.errorText}>{error}</Text>}
 
-      {loading && (
-        <ActivityIndicator color="#C9A84C" style={{ marginTop: 24 }} />
+      {!loading && searched && (
+        <FlatList
+          data={results}
+          keyExtractor={(item) => item.idDrink}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={renderHeader}
+          renderItem={renderCard}
+          contentContainerStyle={styles.listContent}
+        />
       )}
-
-      {error && (
-        <Text style={styles.errorText}>{error}</Text>
-      )}
-
-      {showResults && !loading && (
-        <View style={styles.results}>
-          <Text style={styles.sectionTitle}>
-            {results.length > 0 ? `${results.length} Results` : 'No results found'}
-          </Text>
-          {results.map((r) => (
-            <View key={r.idDrink} style={styles.resultCard}>
-              <Text style={styles.resultName}>{r.strDrink}</Text>
-              <Text style={styles.resultCategory}>{r.strCategory}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0A', padding: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#F5F0E8', marginTop: 40, marginBottom: 20 },
-  searchInput: {
-    backgroundColor: '#1C1C1C', color: '#F5F0E8', padding: 14,
-    borderRadius: 10, fontSize: 16, marginBottom: 16,
+  container:    { flex: 1, backgroundColor: Colors.background, padding: Spacing.md },
+  title:        { ...Typography.heading, fontSize: 28, marginTop: Spacing.xl, marginBottom: Spacing.md },
+  searchInput:  {
+    backgroundColor: Colors.surfaceRaised, color: Colors.textPrimary,
+    padding: 14, borderRadius: Radius.md, fontSize: 16, marginBottom: 12,
   },
-  activeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  activeLabel: { color: '#8A8A8A', fontSize: 13 },
-  clearText: { color: '#C9A84C', fontSize: 13 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#F5F0E8', marginBottom: 12 },
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  chip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: '#2A2A2A', backgroundColor: '#141414',
+  activeRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  activeLabel:  { ...Typography.bodySmall },
+  clearText:    { ...Typography.bodySmall, color: Colors.accent },
+  sectionTitle: { ...Typography.label, marginBottom: Spacing.sm },
+  chipGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
+  chip:         {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
   },
-  chipActive: { borderColor: '#C9A84C', backgroundColor: '#C9A84C22' },
-  chipText: { color: '#8A8A8A', fontSize: 13 },
-  chipTextActive: { color: '#C9A84C' },
-  searchButton: {
-    backgroundColor: '#C9A84C', paddingVertical: 14, borderRadius: 10,
-    alignItems: 'center', marginBottom: 24,
-  },
-  searchButtonText: { color: '#0A0A0A', fontSize: 16, fontWeight: '600' },
-  results: { marginTop: 8 },
-  resultCard: {
-    backgroundColor: '#1C1C1C', padding: 16, borderRadius: 10,
-    marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between',
-  },
-  resultName: { color: '#F5F0E8', fontSize: 16, fontWeight: '600' },
-  resultCategory: { color: '#C9A84C', fontSize: 14 },
-  errorText: { color: '#FF6B6B', fontSize: 13, textAlign: 'center', marginTop: 12 },
+  chipActive:     { borderColor: Colors.accent, backgroundColor: Colors.accentGlow },
+  chipText:       { ...Typography.bodySmall },
+  chipTextActive: { color: Colors.accent },
+  loader:         { marginTop: Spacing.lg },
+  row:            { justifyContent: 'space-between', marginBottom: Spacing.md },
+  card:           { width: '48%' },
+  errorText:      { ...Typography.bodySmall, color: Colors.error, textAlign: 'center', marginTop: 12 },
+  listContent:    { paddingBottom: Spacing.xl },
 });
