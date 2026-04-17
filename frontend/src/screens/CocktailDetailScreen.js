@@ -1,5 +1,7 @@
-// SCRUM-130: Cocktail Detail Screen
-// Displays full cocktail record fetched via GET /api/cocktails/:id
+// SCRUM-130 + SCRUM-172: Cocktail Detail Screen
+// Displays full cocktail record fetched via GET /api/recipes/:id
+// Consumes the normalized drink shape: { id, name, thumb, category, alcoholic,
+// glass, instructions, ingredients }
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -44,8 +46,8 @@ export default function CocktailDetailScreen({ route, navigation }) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* ── Hero Image ── */}
-      {cocktail.strDrinkThumb ? (
-        <Image source={{ uri: cocktail.strDrinkThumb }} style={styles.hero} />
+      {cocktail.thumb ? (
+        <Image source={{ uri: cocktail.thumb }} style={styles.hero} />
       ) : (
         <View style={[styles.hero, styles.heroFallback]}>
           <Text style={styles.heroIcon}>⚗</Text>
@@ -59,25 +61,25 @@ export default function CocktailDetailScreen({ route, navigation }) {
 
       <View style={styles.content}>
         {/* ── Name ── */}
-        <Text style={styles.title}>{cocktail.strDrink}</Text>
+        <Text style={styles.title}>{cocktail.name}</Text>
 
         {/* ── Badges ── */}
         <View style={styles.badgeRow}>
-          {cocktail.strCategory && (
+          {cocktail.category && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{cocktail.strCategory}</Text>
+              <Text style={styles.badgeText}>{cocktail.category}</Text>
             </View>
           )}
-          {cocktail.strAlcoholic && (
+          {cocktail.alcoholic && (
             <View style={[styles.badge, styles.badgeGold]}>
               <Text style={[styles.badgeText, styles.badgeTextGold]}>
-                {cocktail.strAlcoholic}
+                {cocktail.alcoholic}
               </Text>
             </View>
           )}
-          {cocktail.strGlass && (
+          {cocktail.glass && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{cocktail.strGlass}</Text>
+              <Text style={styles.badgeText}>{cocktail.glass}</Text>
             </View>
           )}
         </View>
@@ -96,10 +98,10 @@ export default function CocktailDetailScreen({ route, navigation }) {
         </View>
 
         {/* ── Instructions ── */}
-        {cocktail.strInstructions && (
+        {cocktail.instructions && (
           <>
             <Text style={styles.sectionTitle}>Instructions</Text>
-            <Text style={styles.instructions}>{cocktail.strInstructions}</Text>
+            <Text style={styles.instructions}>{cocktail.instructions}</Text>
           </>
         )}
 
