@@ -1,6 +1,7 @@
-// SCRUM-130: Search Screen — live debounced search + ingredient filter chips
-// Wired to backend proxy GET /api/cocktails/search and /api/cocktails/filter
+// SCRUM-130 + SCRUM-172: Search Screen — live debounced search + ingredient filter chips
+// Wired to backend proxy GET /api/recipes/search and /api/recipes/filter
 // Results rendered with CocktailCard; tapping navigates to CocktailDetailScreen
+// All result items use the normalized drink shape: { id, name, thumb, category, alcoholic, ... }
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -82,14 +83,18 @@ export default function SearchScreen({ navigation }) {
   };
 
   const handleCardPress = (item) => {
-    navigation.navigate('CocktailDetail', { id: item.idDrink, name: item.strDrink });
+    // SCRUM-172: normalized shape — was item.idDrink / item.strDrink
+    navigation.navigate('CocktailDetail', { id: item.id, name: item.name });
   };
 
   const renderCard = ({ item }) => (
+    // SCRUM-172: normalized shape — was item.strDrink / item.strDrinkThumb /
+    // item.strCategory / item.strAlcoholic (which only existed on the
+    // un-normalized filter payload, causing live search cards to render empty).
     <CocktailCard
-      drinkName={item.strDrink}
-      imageUri={item.strDrinkThumb || null}
-      tags={[item.strCategory, item.strAlcoholic].filter(Boolean)}
+      drinkName={item.name}
+      imageUri={item.thumb || null}
+      tags={[item.category, item.alcoholic].filter(Boolean)}
       onPress={() => handleCardPress(item)}
       style={styles.card}
     />
@@ -147,7 +152,7 @@ export default function SearchScreen({ navigation }) {
       {!loading && searched && (
         <FlatList
           data={results}
-          keyExtractor={(item) => item.idDrink}
+          keyExtractor={(item) => item.id}
           numColumns={2}
           columnWrapperStyle={styles.row}
           showsVerticalScrollIndicator={false}

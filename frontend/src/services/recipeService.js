@@ -28,9 +28,12 @@ async function getAuthToken() {
 /**
  * GET /api/recipes/:id
  * Fetches full cocktail detail for a given CocktailDB drinkId.
- * Returns the full normalized cocktail object:
- *   { idDrink, strDrink, strInstructions, strDrinkThumb,
- *     ingredients: [{ name, measure }], strCategory, strAlcoholic }
+ * Returns the normalized cocktail object (see backend/services/cocktailService.js):
+ *   { id, name, thumb, category, alcoholic, glass, instructions,
+ *     ingredients: [{ name, measure }] }
+ *
+ * SCRUM-172: JSDoc corrected — backend normalizes via `normalizeDrink()`, so the
+ * response does NOT use raw CocktailDB keys (strDrink, idDrink, etc.).
  *
  * @param {string} drinkId - CocktailDB drinkId (e.g. "11007")
  * @returns {Object|null} cocktail detail, or null on failure
