@@ -1,9 +1,18 @@
 // App.js
 // Alchemy AI — Root Entry Point
+// Loads Cormorant Garamond + DM Sans before rendering
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import {
+  CormorantGaramond_300Light,
+} from '@expo-google-fonts/cormorant-garamond';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+} from '@expo-google-fonts/dm-sans';
 
 import RootNavigator from './src/navigation/RootNavigator';
 
@@ -11,8 +20,15 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
 
+  // ── Load custom fonts ──────────────────────────────────────────────────────
+  const [fontsLoaded] = useFonts({
+    CormorantGaramond_300Light,
+    DMSans_400Regular,
+    DMSans_500Medium,
+  });
+
+  // ── Firebase auth ──────────────────────────────────────────────────────────
   useEffect(() => {
-    // Skip Firebase auth if API key is not configured
     const apiKey = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey || apiKey === 'your_firebase_api_key_here') {
       console.warn('Firebase API key not configured — skipping auth');
@@ -20,7 +36,6 @@ export default function App() {
       return;
     }
 
-    // Only import and use Firebase if we have a real key
     const { onAuthStateChanged } = require('firebase/auth');
     const { auth } = require('./firebaseConfig');
 
@@ -41,7 +56,8 @@ export default function App() {
     };
   }, []);
 
-  if (!ready) {
+  // ── Wait for both fonts and auth ───────────────────────────────────────────
+  if (!fontsLoaded || !ready) {
     return (
       <View style={styles.loader}>
         <Text style={styles.loadingText}>Loading Alchemy AI...</Text>
@@ -60,7 +76,7 @@ export default function App() {
 const styles = StyleSheet.create({
   loader: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#0D0D0D',
     alignItems: 'center',
     justifyContent: 'center',
   },

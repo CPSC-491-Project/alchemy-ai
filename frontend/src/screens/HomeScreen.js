@@ -1,6 +1,6 @@
 // Alchemy AI — Home Screen
 // SCRUM-74: Wire carousel to GET /api/recommendations
-// Replaces Sprint 1 placeholder with live service call + mock fallback
+// Updated: replaced hardcoded hex values with theme tokens
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
@@ -14,6 +14,7 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
+import { Colors, Typography, Spacing, Radius } from '../theme';
 import { fetchRecommendations } from '../services/recommendationsService';
 
 // ── Mock fallback — active until SCRUM-115 (Ethan's backend PR) merges ────────
@@ -102,11 +103,15 @@ export default function HomeScreen({ navigation }) {
     <ScrollView
       style={styles.container}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#C9A84C" />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={Colors.accent}
+        />
       }
     >
-      <Text style={styles.greeting}>Good evening</Text>
-      <Text style={styles.subtitle}>What are you in the mood for?</Text>
+      <Text style={styles.greeting}>What will you craft tonight?</Text>
+      <Text style={styles.subtitle}>Based on your ingredient cabinet</Text>
 
       <Text style={styles.sectionTitle}>Recommended for You</Text>
 
@@ -117,7 +122,7 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {loading ? (
-        <ActivityIndicator color="#C9A84C" style={{ marginTop: 24 }} />
+        <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.lg }} />
       ) : (
         <FlatList
           data={recommendations}
@@ -135,69 +140,63 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
-    paddingTop: 24,
+    backgroundColor: Colors.background,
+    paddingTop: Spacing.lg,
   },
   greeting: {
-    fontSize: 28,
-    color: '#FFFFFF',
-    fontWeight: '300',
-    paddingHorizontal: 20,
+    ...Typography.headingM,
+    paddingHorizontal: Spacing.lg,
+    lineHeight: 40,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#888888',
-    paddingHorizontal: 20,
-    marginTop: 4,
-    marginBottom: 24,
+    ...Typography.bodySmall,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.lg,
   },
   sectionTitle: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    paddingHorizontal: 20,
-    marginBottom: 8,
+    ...Typography.navTitle,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
   mockBanner: {
-    fontSize: 11,
-    color: '#C9A84C',
-    paddingHorizontal: 20,
-    marginBottom: 8,
+    ...Typography.caption,
+    color: Colors.accent,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
     opacity: 0.7,
   },
   carousel: {
-    paddingHorizontal: 20,
-    gap: 12,
-    paddingBottom: 24,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    paddingBottom: Spacing.lg,
   },
   card: {
     width: 200,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: Colors.border,
   },
   cardImage: {
     width: '100%',
     height: 130,
   },
   cardBody: {
-    padding: 12,
+    padding: Spacing.sm,
   },
   cardName: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '500',
+    ...Typography.cardTitle,
     marginBottom: 2,
   },
   cardMatch: {
-    fontSize: 12,
-    color: '#C9A84C',
+    ...Typography.caption,
+    color: Colors.accent,
   },
   cardMissing: {
-    fontSize: 11,
-    color: '#888888',
+    ...Typography.caption,
+    color: Colors.textSecondary,
     marginTop: 2,
   },
 });
