@@ -3,7 +3,7 @@
 // Firestore caching is applied with a lazy-load pattern so the app degrades
 // gracefully when Firebase credentials are absent.
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
 
 // ─── Lazy Firebase ────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ async function writeCache(key, data) {
 
 /**
  * Search cocktails by name.
- * GET /api/cocktails/search?q=<query>
+ * GET /api/recipes/search?q=<query>
  */
 export async function searchCocktails(query) {
   if (!query?.trim()) return [];
@@ -63,7 +63,7 @@ export async function searchCocktails(query) {
   if (cached) return cached;
 
   const res = await fetch(
-    `${BACKEND_URL}/api/cocktails/search?q=${encodeURIComponent(query.trim())}`
+    `${BACKEND_URL}/api/recipes/search?q=${encodeURIComponent(query.trim())}`
   );
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);
   const data = await res.json();
@@ -74,7 +74,7 @@ export async function searchCocktails(query) {
 
 /**
  * Fetch full cocktail detail by CocktailDB ID.
- * GET /api/cocktails/:id
+ * GET /api/recipes/:id
  */
 export async function getCocktailById(id) {
   const cacheKey = `detail_${id}`;
@@ -82,7 +82,7 @@ export async function getCocktailById(id) {
   const cached = await readCache(cacheKey);
   if (cached) return cached;
 
-  const res = await fetch(`${BACKEND_URL}/api/cocktails/${id}`);
+  const res = await fetch(`${BACKEND_URL}/api/recipes/${id}`);
   if (!res.ok) throw new Error(`Lookup failed: ${res.status}`);
   const data = await res.json();
 
@@ -92,10 +92,10 @@ export async function getCocktailById(id) {
 
 /**
  * Get a random cocktail for discovery surfaces.
- * GET /api/cocktails/random
+ * GET /api/recipes/random
  */
 export async function getRandomCocktail() {
-  const res = await fetch(`${BACKEND_URL}/api/cocktails/random`);
+  const res = await fetch(`${BACKEND_URL}/api/recipes/random`);
   if (!res.ok) throw new Error(`Random fetch failed: ${res.status}`);
   return res.json();
 }
@@ -103,7 +103,7 @@ export async function getRandomCocktail() {
 /**
  * Filter cocktails by a single ingredient.
  * Returns partial records (id, name, thumbnail) — use getCocktailById for full detail.
- * GET /api/cocktails/filter?ingredient=<name>
+ * GET /api/recipes/filter?ingredient=<name>
  */
 export async function filterByIngredient(ingredient) {
   if (!ingredient?.trim()) return [];
@@ -113,7 +113,7 @@ export async function filterByIngredient(ingredient) {
   if (cached) return cached;
 
   const res = await fetch(
-    `${BACKEND_URL}/api/cocktails/filter?ingredient=${encodeURIComponent(ingredient.trim())}`
+    `${BACKEND_URL}/api/recipes/filter?ingredient=${encodeURIComponent(ingredient.trim())}`
   );
   if (!res.ok) throw new Error(`Filter failed: ${res.status}`);
   const data = await res.json();
