@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import FavoritesScreen from '../screens/FavoritesScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -24,7 +25,7 @@ const TAB_CONFIG = [
   { name: 'Home', icon: 'home', component: HomeScreen },
   { name: 'Create', icon: 'add-circle', component: PlaceholderScreen },
   { name: 'Search', icon: 'search', component: SearchScreen },
-  { name: 'Favorites', icon: 'heart', component: PlaceholderScreen },
+  { name: 'Favorites', icon: 'heart', component: FavoritesScreen },
   { name: 'Profile', icon: 'person', component: ProfileScreen },
 ];
 
