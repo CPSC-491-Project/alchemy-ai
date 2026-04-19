@@ -98,14 +98,13 @@ export default function ProfileScreen({ navigation }) {
   // Try to get auth context — fail gracefully
   let authUser = null;
   let signOut = () => navigation?.navigate('Login');
-  try {
-    if (useAuth) {
-      const auth = useAuth();
-      authUser = auth?.user;
-      isGuest || setIsGuest(auth?.isGuest ?? false);
-      if (auth?.signOut) signOut = auth.signOut;
-    }
-  } catch {}
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const authContext = useAuth ? useAuth() : null;
+  if (authContext) {
+    authUser = authContext.user ?? null;
+    if (authContext.isGuest) setIsGuest(true);
+    if (authContext.signOut) signOut = authContext.signOut;
+  }
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
