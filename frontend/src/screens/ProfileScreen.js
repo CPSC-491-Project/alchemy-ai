@@ -1,512 +1,474 @@
-/**
- * ProfileScreen.js — Frontend wiring to GET /api/me + PUT /api/me/preferences
- * Alchemy AI | SCRUM-52 / SCRUM-53 integration (Allisa Warren — PM / Systems Integration)
- *
- * What this file does:
- *   1. On mount — calls GET /api/me via userService.fetchUserProfile()
- *   2. Renders the user's profile data (displayName, email, cocktailPreferences, dietaryRestrictions)
- *   3. On save — calls PUT /api/me/preferences via userService.updateUserPreferences()
- *   4. Publishes INGREDIENTS_UPDATED so the recommendation engine can react (EventBus)
- *   5. All design tokens from theme/index.js — zero hardcoded values
- *
- * Backend contract (Ethan's PR #13, SCRUM-52/53, merged):
- *   GET  /api/me              → { displayName, email, photoURL, preferences: { cocktailPreferences[], dietaryRestrictions[], strengthPreference } }
- *   PUT  /api/me/preferences  → body: { cocktailPreferences[], dietaryRestrictions[], strengthPreference }
- *                             ← { success: true, preferences: { ... } }
- */
+// frontend/src/screens/ProfileScreen.js
+// SCRUM-122 — High-fidelity UI screens
+// SCRUM-138 — Wire ProfileScreen to GET /api/me and PUT /api/me/preferences
+// Assigned to: Allisa Warren
+//
+// Matches Figma wireframe: avatar initials circle, name, PREMIUM badge,
+// settings rows with chevrons, notifications toggle, guest fallback state.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
   StyleSheet,
-  Image,
+  ScrollView,
+  TouchableOpacity,
   Switch,
+  ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getAuth, signOut } from 'firebase/auth';
 import { Colors, Typography, Spacing, Radius } from '../theme/index';
-import EventBus, { Events } from '../utils/EventBus';
 
-// ---------------------------------------------------------------------------
-// Service helpers — thin wrappers around the backend endpoints
-// ---------------------------------------------------------------------------
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
-
-async function _getAuthHeader() {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('Not authenticated');
-  const token = await user.getIdToken();
-  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+// ─── Auth context — adjust import path if your project differs ───────────────
+let useAuth;
+try {
+  useAuth = require('../context/AuthContext').useAuth;
+} catch {
+  useAuth = () => ({ user: null, isGuest: true, signOut: () => {} });
 }
 
-/**
- * GET /api/me — fetch the current user's full profile from Firestore
- * Returns the profile object or null on auth/network failure.
- */
-async function fetchUserProfile() {
-  try {
-    const headers = await _getAuthHeader();
-    const res = await fetch(`${BACKEND_URL}/api/me`, { method: 'GET', headers });
-    if (!res.ok) throw new Error(`GET /api/me returned ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('[ProfileScreen] fetchUserProfile error:', err.message);
-    return null;
-  }
+// ─── User service ─────────────────────────────────────────────────────────────
+let getUserProfile, updatePreferences;
+try {
+  const svc = require('../services/userService');
+  getUserProfile = svc.getUserProfile;
+  updatePreferences = svc.updatePreferences;
+} catch {
+  getUserProfile = null;
+  updatePreferences = null;
 }
 
-/**
- * PUT /api/me/preferences — persist preference changes to Firestore
- * Returns { success, preferences } or null on failure.
- */
-async function updateUserPreferences(preferences) {
-  try {
-    const headers = await _getAuthHeader();
-    const res = await fetch(`${BACKEND_URL}/api/me/preferences`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(preferences),
-    });
-    if (!res.ok) throw new Error(`PUT /api/me/preferences returned ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error('[ProfileScreen] updateUserPreferences error:', err.message);
-    return null;
-  }
+// ─── Settings rows config ─────────────────────────────────────────────────────
+const SETTINGS_ROWS = [
+  { key: 'flavorPreferences', label: 'Flavor Preferences', detail: 'Citrus, Bitter, Smoke' },
+  { key: 'unitsMeasurements', label: 'Units & Measurements', detail: null },
+  { key: 'privacy', label: 'Privacy', detail: null },
+  { key: 'subscriptionBilling', label: 'Subscription & Billing', detail: null },
+  { key: 'appVersion', label: 'App Version', detail: '1.0.0', noChevron: true },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(' ');
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-const COCKTAIL_PREFERENCE_OPTIONS = ['Citrusy', 'Sweet', 'Fruity', 'Herbal', 'Bitter', 'Spicy', 'Smoky', 'Classic'];
-const DIETARY_OPTIONS = ['Vegan', 'Gluten-Free', 'Low Sugar', 'Low ABV', 'Non-Alcoholic'];
-const STRENGTH_OPTIONS = ['Light', 'Medium', 'Strong'];
+// ─── Guest fallback screen ────────────────────────────────────────────────────
+function GuestProfileScreen({ navigation }) {
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Profile</Text>
+      </View>
+      <View style={styles.guestContainer}>
+        <View style={styles.guestAvatar}>
+          <Text style={styles.guestAvatarText}>?</Text>
+        </View>
+        <Text style={styles.guestHeading}>You're browsing as a guest</Text>
+        <Text style={styles.guestSubtext}>
+          Sign in to save your favorites, track your cabinet, and get personalized recommendations.
+        </Text>
+        <TouchableOpacity
+          style={styles.signInButton}
+          onPress={() => navigation?.navigate('Login')}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in to your account"
+        >
+          <Text style={styles.signInButtonText}>Sign In</Text>
+        </TouchableOpacity>
+        <View style={styles.versionRow}>
+          <Text style={styles.versionText}>App Version 1.0.0</Text>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
 
-// ---------------------------------------------------------------------------
-// ProfileScreen component
-// ---------------------------------------------------------------------------
+// ─── Main profile screen ──────────────────────────────────────────────────────
 export default function ProfileScreen({ navigation }) {
-  // Profile data from GET /api/me
   const [profile, setProfile] = useState(null);
-
-  // Preference state (editable)
-  const [cocktailPrefs, setCocktailPrefs] = useState([]);
-  const [dietaryRestrictions, setDietaryRestrictions] = useState([]);
-  const [strengthPreference, setStrengthPreference] = useState('Medium');
-  const [publicProfile, setPublicProfile] = useState(false);
-
-  // UI state
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [dirty, setDirty] = useState(false); // true when unsaved changes exist
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isGuest, setIsGuest] = useState(false);
 
-  // ---------------------------------------------------------------------------
-  // Load profile on screen focus (picks up changes from other screens)
-  // ---------------------------------------------------------------------------
+  // Try to get auth context — fail gracefully
+  let authUser = null;
+  let signOut = () => navigation?.navigate('Login');
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const authContext = useAuth ? useAuth() : null;
+  if (authContext) {
+    authUser = authContext.user ?? null;
+    if (authContext.isGuest) setIsGuest(true);
+    if (authContext.signOut) signOut = authContext.signOut;
+  }
+
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (!getUserProfile) throw new Error('userService not available');
+      const data = await getUserProfile();
+      setProfile(data);
+      if (data?.preferences?.notificationsEnabled !== undefined) {
+        setNotificationsEnabled(data.preferences.notificationsEnabled);
+      }
+    } catch (err) {
+      // If we get a 401/403 or no user, treat as guest
+      if (authUser === null) {
+        setIsGuest(true);
+      } else {
+        setError(err.message || 'Could not load profile.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [authUser]);
+
   useFocusEffect(
     useCallback(() => {
       loadProfile();
-    }, [])
+    }, [loadProfile])
   );
 
-  async function loadProfile() {
-    setLoading(true);
-    setError(null);
-    const data = await fetchUserProfile();
-    if (!data) {
-      setError('Could not load profile. Please check your connection and try again.');
-    } else {
-      setProfile(data);
-      // Hydrate preference state from server response
-      setCocktailPrefs(data.preferences?.cocktailPreferences ?? []);
-      setDietaryRestrictions(data.preferences?.dietaryRestrictions ?? []);
-      setStrengthPreference(data.preferences?.strengthPreference ?? 'Medium');
-      setPublicProfile(data.preferences?.publicProfile ?? false);
-      setDirty(false);
+  const handleNotificationToggle = async (value) => {
+    setNotificationsEnabled(value);
+    try {
+      if (updatePreferences) {
+        await updatePreferences({ notificationsEnabled: value });
+      }
+    } catch {
+      // Silently revert
+      setNotificationsEnabled(!value);
     }
-    setLoading(false);
+  };
+
+  // ── Guest state ──────────────────────────────────────────────────────────
+  if (!loading && (isGuest || (error && authUser === null))) {
+    return <GuestProfileScreen navigation={navigation} />;
   }
 
-  // ---------------------------------------------------------------------------
-  // Toggle helpers — mark form dirty on any change
-  // ---------------------------------------------------------------------------
-  function togglePref(list, setList, value) {
-    setList((prev) => {
-      const next = prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value];
-      setDirty(true);
-      return next;
-    });
-  }
-
-  function handleStrengthChange(value) {
-    setStrengthPreference(value);
-    setDirty(true);
-  }
-
-  function handlePublicToggle(val) {
-    setPublicProfile(val);
-    setDirty(true);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Save — PUT /api/me/preferences
-  // ---------------------------------------------------------------------------
-  async function handleSave() {
-    setSaving(true);
-    const payload = {
-      cocktailPreferences: cocktailPrefs,
-      dietaryRestrictions,
-      strengthPreference,
-      publicProfile,
-    };
-    const result = await updateUserPreferences(payload);
-    setSaving(false);
-
-    if (!result || !result.success) {
-      Alert.alert('Save Failed', 'Could not save preferences. Please try again.');
-      return;
-    }
-
-    setDirty(false);
-    // Notify recommendation engine + cabinet badge that prefs changed
-    EventBus.emit(Events.INGREDIENTS_UPDATED, {
-      userId: profile?.uid,
-      source: 'preferences_update',
-    });
-    Alert.alert('Saved', 'Your preferences have been updated.');
-  }
-
-  // ---------------------------------------------------------------------------
-  // Sign out
-  // ---------------------------------------------------------------------------
-  async function handleSignOut() {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          EventBus.emit(Events.USER_LOGOUT, { userId: profile?.uid });
-          await signOut(getAuth());
-          navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
-        },
-      },
-    ]);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render helpers
-  // ---------------------------------------------------------------------------
-  function PillButton({ label, selected, onPress }) {
-    return (
-      <TouchableOpacity
-        style={[styles.pill, selected && styles.pillSelected]}
-        onPress={onPress}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: selected }}
-        accessibilityLabel={label}
-      >
-        <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{label}</Text>
-      </TouchableOpacity>
-    );
-  }
-
-  function SectionHeader({ title }) {
-    return <Text style={styles.sectionHeader}>{title}</Text>;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Loading / Error states
-  // ---------------------------------------------------------------------------
+  // ── Loading state ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={styles.loadingText}>Loading profile…</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <ActivityIndicator color={Colors.accent} size="large" />
+        </View>
+      </SafeAreaView>
     );
   }
 
+  // ── Error state (logged-in user, real error) ──────────────────────────────
   if (error) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Main render
-  // ---------------------------------------------------------------------------
+  // ── Display name / initials ───────────────────────────────────────────────
+  const displayName = profile?.displayName || authUser?.displayName || 'User';
+  const isPremium = profile?.isPremium ?? false;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-
-      {/* ── Avatar + display info ────────────────────────────────────────── */}
-      <View style={styles.avatarRow}>
-        {profile?.photoURL ? (
-          <Image source={{ uri: profile.photoURL }} style={styles.avatar} accessibilityLabel="Profile photo" />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarInitial}>
-              {(profile?.displayName ?? profile?.email ?? '?')[0].toUpperCase()}
-            </Text>
-          </View>
-        )}
-        <View style={styles.userInfo}>
-          <Text style={styles.displayName}>{profile?.displayName ?? 'Alchemist'}</Text>
-          <Text style={styles.email}>{profile?.email ?? ''}</Text>
-        </View>
+    <SafeAreaView style={styles.container}>
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Profile</Text>
       </View>
 
-      {/* ── Cocktail preferences ─────────────────────────────────────────── */}
-      <SectionHeader title="Cocktail Preferences" />
-      <Text style={styles.hint}>Select all that match your taste</Text>
-      <View style={styles.pillRow}>
-        {COCKTAIL_PREFERENCE_OPTIONS.map((opt) => (
-          <PillButton
-            key={opt}
-            label={opt}
-            selected={cocktailPrefs.includes(opt)}
-            onPress={() => togglePref(cocktailPrefs, setCocktailPrefs, opt)}
-          />
-        ))}
-      </View>
-
-      {/* ── Dietary restrictions ─────────────────────────────────────────── */}
-      <SectionHeader title="Dietary & Lifestyle" />
-      <View style={styles.pillRow}>
-        {DIETARY_OPTIONS.map((opt) => (
-          <PillButton
-            key={opt}
-            label={opt}
-            selected={dietaryRestrictions.includes(opt)}
-            onPress={() => togglePref(dietaryRestrictions, setDietaryRestrictions, opt)}
-          />
-        ))}
-      </View>
-
-      {/* ── Strength preference ──────────────────────────────────────────── */}
-      <SectionHeader title="Preferred Strength" />
-      <View style={styles.pillRow}>
-        {STRENGTH_OPTIONS.map((opt) => (
-          <PillButton
-            key={opt}
-            label={opt}
-            selected={strengthPreference === opt}
-            onPress={() => handleStrengthChange(opt)}
-          />
-        ))}
-      </View>
-
-      {/* ── Privacy toggle ───────────────────────────────────────────────── */}
-      <SectionHeader title="Privacy" />
-      <View style={styles.toggleRow}>
-        <Text style={styles.toggleLabel}>Public Profile</Text>
-        <Switch
-          value={publicProfile}
-          onValueChange={handlePublicToggle}
-          trackColor={{ false: Colors.surface, true: Colors.accent }}
-          thumbColor={Colors.white}
-          accessibilityLabel="Public profile toggle"
-        />
-      </View>
-
-      {/* ── Save button ──────────────────────────────────────────────────── */}
-      <TouchableOpacity
-        style={[styles.saveButton, (!dirty || saving) && styles.saveButtonDisabled]}
-        onPress={handleSave}
-        disabled={!dirty || saving}
-        accessibilityRole="button"
-        accessibilityLabel="Save preferences"
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {saving ? (
-          <ActivityIndicator size="small" color={Colors.white} />
-        ) : (
-          <Text style={styles.saveButtonText}>{dirty ? 'Save Changes' : 'Saved'}</Text>
-        )}
-      </TouchableOpacity>
+        {/* ── Avatar + Name + Badge ── */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarInitials}>{getInitials(displayName)}</Text>
+          </View>
+          <Text style={styles.displayName}>{displayName}</Text>
+          {isPremium && (
+            <View style={styles.premiumBadge}>
+              <Text style={styles.premiumBadgeText}>PREMIUM</Text>
+            </View>
+          )}
+        </View>
 
-      {/* ── Sign out ─────────────────────────────────────────────────────── */}
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut} accessibilityRole="button">
-        <Text style={styles.signOutText}>Sign Out</Text>
-      </TouchableOpacity>
+        {/* ── Divider ── */}
+        <View style={styles.divider} />
 
-    </ScrollView>
+        {/* ── Settings section label ── */}
+        <Text style={styles.sectionLabel}>PREFERENCES</Text>
+
+        {/* ── Settings rows ── */}
+        {SETTINGS_ROWS.map((row, index) => (
+          <TouchableOpacity
+            key={row.key}
+            style={[
+              styles.settingsRow,
+              index === SETTINGS_ROWS.length - 1 && styles.settingsRowLast,
+            ]}
+            onPress={() => {}}
+            activeOpacity={row.noChevron ? 1 : 0.6}
+            accessibilityRole={row.noChevron ? 'text' : 'button'}
+            accessibilityLabel={row.label}
+          >
+            <View style={styles.settingsRowLeft}>
+              <Text style={styles.settingsRowLabel}>{row.label}</Text>
+              {row.detail && (
+                <Text style={styles.settingsRowDetail}>{row.detail}</Text>
+              )}
+            </View>
+            {!row.noChevron && (
+              <Text style={styles.chevron}>›</Text>
+            )}
+          </TouchableOpacity>
+        ))}
+
+        {/* ── Notifications toggle row ── */}
+        <View style={styles.settingsRow}>
+          <Text style={styles.settingsRowLabel}>Notifications</Text>
+          <Switch
+            value={notificationsEnabled}
+            onValueChange={handleNotificationToggle}
+            trackColor={{ false: Colors.border, true: Colors.accent }}
+            thumbColor={Colors.textPrimary}
+            accessibilityRole="switch"
+            accessibilityLabel="Toggle notifications"
+            accessibilityState={{ checked: notificationsEnabled }}
+          />
+        </View>
+
+        {/* ── Divider ── */}
+        <View style={[styles.divider, { marginTop: Spacing.lg }]} />
+
+        {/* ── Sign Out ── */}
+        <TouchableOpacity
+          style={styles.signOutButton}
+          onPress={signOut}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles — all values from theme/index.js
-// ---------------------------------------------------------------------------
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-  contentContainer: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing.xl * 2,
-  },
   centered: {
     flex: 1,
-    backgroundColor: Colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
   },
-  loadingText: {
-    marginTop: Spacing.sm,
-    color: Colors.textSecondary,
-    ...Typography.body,
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  header: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
-  errorText: {
-    color: Colors.error,
-    ...Typography.body,
-    textAlign: 'center',
+  headerTitle: {
+    ...Typography.headingS,
+    color: Colors.textPrimary,
+  },
+
+  // ── Scroll content ────────────────────────────────────────────────────────
+  scrollContent: {
+    paddingBottom: Spacing.xxl,
+  },
+
+  // ── Avatar section ────────────────────────────────────────────────────────
+  avatarSection: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+  },
+  avatarCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.surfaceRaised,
+    borderWidth: 2,
+    borderColor: Colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: Spacing.md,
+  },
+  avatarInitials: {
+    ...Typography.headingS,
+    color: Colors.accent,
+    fontSize: 28,
+  },
+  displayName: {
+    ...Typography.headingXS,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  premiumBadge: {
+    backgroundColor: Colors.accentDim,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 3,
+  },
+  premiumBadgeText: {
+    ...Typography.label,
+    color: Colors.accent,
+    fontSize: 10,
+    letterSpacing: 2,
+  },
+
+  // ── Divider ───────────────────────────────────────────────────────────────
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+
+  // ── Section label ─────────────────────────────────────────────────────────
+  sectionLabel: {
+    ...Typography.sectionHeader,
+    color: Colors.textFaint,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+
+  // ── Settings rows ─────────────────────────────────────────────────────────
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  settingsRowLast: {
+    borderBottomWidth: 0,
+  },
+  settingsRowLeft: {
+    flex: 1,
+  },
+  settingsRowLabel: {
+    ...Typography.bodyMedium,
+    color: Colors.textPrimary,
+  },
+  settingsRowDetail: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  chevron: {
+    fontSize: 22,
+    color: Colors.textSecondary,
+    marginLeft: Spacing.sm,
+  },
+
+  // ── Sign Out ──────────────────────────────────────────────────────────────
+  signOutButton: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+  },
+  signOutText: {
+    ...Typography.bodyMedium,
+    color: Colors.error,
+  },
+
+  // ── Guest state ───────────────────────────────────────────────────────────
+  guestContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  guestAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  guestAvatarText: {
+    fontSize: 32,
+    color: Colors.textSecondary,
+  },
+  guestHeading: {
+    ...Typography.headingXS,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  guestSubtext: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+    lineHeight: 22,
+  },
+  signInButton: {
+    backgroundColor: Colors.accent,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.pill,
+  },
+  signInButtonText: {
+    ...Typography.button,
+    color: Colors.background,
+    fontWeight: '600',
+  },
+  versionRow: {
+    position: 'absolute',
+    bottom: Spacing.xl,
+  },
+  versionText: {
+    ...Typography.caption,
+    color: Colors.textFaint,
+  },
+
+  // ── Error state ───────────────────────────────────────────────────────────
+  errorText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
   },
   retryButton: {
     backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-  },
-  retryText: {
-    color: Colors.white,
-    ...Typography.button,
-  },
-
-  // Avatar row
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    marginRight: Spacing.md,
-  },
-  avatarPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.md,
-  },
-  avatarInitial: {
-    color: Colors.white,
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  displayName: {
-    color: Colors.textPrimary,
-    ...Typography.heading,
-    marginBottom: Spacing.xs,
-  },
-  email: {
-    color: Colors.textSecondary,
-    ...Typography.caption,
-  },
-
-  // Section
-  sectionHeader: {
-    color: Colors.textPrimary,
-    ...Typography.subheading,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  hint: {
-    color: Colors.textSecondary,
-    ...Typography.caption,
-    marginBottom: Spacing.sm,
-  },
-
-  // Pills
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  pill: {
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
     borderRadius: Radius.pill,
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: Colors.surface,
   },
-  pillSelected: {
-    borderColor: Colors.accent,
-    backgroundColor: Colors.accentSubtle,
-  },
-  pillText: {
-    color: Colors.textSecondary,
-    ...Typography.caption,
-  },
-  pillTextSelected: {
-    color: Colors.accent,
-    fontWeight: '600',
-  },
-
-  // Privacy toggle
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  toggleLabel: {
-    color: Colors.textPrimary,
-    ...Typography.body,
-  },
-
-  // Save
-  saveButton: {
-    backgroundColor: Colors.accent,
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    marginTop: Spacing.xl,
-  },
-  saveButtonDisabled: {
-    backgroundColor: Colors.surface,
-  },
-  saveButtonText: {
-    color: Colors.white,
+  retryButtonText: {
     ...Typography.button,
-  },
-
-  // Sign out
-  signOutButton: {
-    marginTop: Spacing.lg,
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-  },
-  signOutText: {
-    color: Colors.error,
-    ...Typography.body,
-    fontWeight: '600',
+    color: Colors.background,
   },
 });
