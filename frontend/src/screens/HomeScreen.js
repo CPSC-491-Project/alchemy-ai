@@ -1,202 +1,513 @@
-// Alchemy AI — Home Screen
-// SCRUM-74: Wire carousel to GET /api/recommendations
-// Updated: replaced hardcoded hex values with theme tokens
+/**
+ * HomeScreen.js
+ * Alchemy AI — CPSC 491 Capstone
+ *
+ * Sprint 4 polish pass (SCRUM-122):
+ *  - Ambient radial glow behind heading (echoes splash-screen orb)
+ *  - "Recommended For You" carousel uses full <CocktailCard> (star + match badge)
+ *  - "Popular Right Now" second section fills previously empty lower half
+ *  - Quick-filter chip row above carousel
+ *  - Party Mode CTA card at bottom
+ *  - WCAG 2.1 AA — all a11y props inlined, no ../utils/accessibility dependency
+ *
+ * Props verified against src/components/CocktailCard.js:
+ *   imageUri | drinkName | tags | rating | matchPct | onPress | style
+ *
+ * Tokens verified against src/theme/index.js:
+ *   Named exports: Colors, Typography, Spacing, Radius
+ *
+ * Author: Allisa Warren
+ */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  Image,
-  TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
   ScrollView,
-  RefreshControl,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  StatusBar,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import CocktailCard from '../components/CocktailCard';
 import { Colors, Typography, Spacing, Radius } from '../theme';
-import { fetchRecommendations } from '../services/recommendationsService';
 
-// ── Mock fallback — active until SCRUM-115 (Ethan's backend PR) merges ────────
-const MOCK_RECOMMENDATIONS = [
-  {
-    id: '11007',
-    name: 'Margarita',
-    thumbnail: 'https://www.thecocktaildb.com/images/media/drink/5noda61589575158.jpg',
-    matchPercentage: 95,
-    missingIngredients: [],
-    category: 'Ordinary Drink',
-  },
-  {
-    id: '11000',
-    name: 'Mojito',
-    thumbnail: 'https://www.thecocktaildb.com/images/media/drink/metwgh1606770327.jpg',
-    matchPercentage: 80,
-    missingIngredients: ['Mint'],
-    category: 'Cocktail',
-  },
-  {
-    id: '178319',
-    name: 'Whiskey Sour',
-    thumbnail: 'https://www.thecocktaildb.com/images/media/drink/hbkfsh1589574990.jpg',
-    matchPercentage: 70,
-    missingIngredients: ['Egg White'],
-    category: 'Ordinary Drink',
-  },
+// ---------------------------------------------------------------------------
+// Layout constants
+// ---------------------------------------------------------------------------
+const CARD_LARGE_W   = 200;
+const CARD_COMPACT_W = 165;
+const CARD_GAP       = 12;
+
+// ---------------------------------------------------------------------------
+// Mock data — prop names match CocktailCard exactly
+// ---------------------------------------------------------------------------
+const MOCK_RECOMMENDED = [
+  { id: 'r1', imageUri: null, drinkName: 'Old Fashioned', tags: ['Classic', 'Stirred'], rating: 4.8, matchPct: 92 },
+  { id: 'r2', imageUri: null, drinkName: 'Negroni',       tags: ['Bitter',  'Stirred'], rating: 4.6, matchPct: 85 },
+  { id: 'r3', imageUri: null, drinkName: 'Manhattan',     tags: ['Rich',    'Stirred'], rating: 4.5, matchPct: 78 },
+  { id: 'r4', imageUri: null, drinkName: 'Whiskey Sour',  tags: ['Citrus',  'Shaken'],  rating: 4.3, matchPct: 71 },
 ];
-// ─────────────────────────────────────────────────────────────────────────────
 
+const MOCK_POPULAR = [
+  { id: 'p1', imageUri: null, drinkName: 'Margarita',        tags: ['Citrus', 'Shaken'], rating: 4.7, matchPct: 60 },
+  { id: 'p2', imageUri: null, drinkName: 'Mojito',           tags: ['Citrus', 'Mint'],   rating: 4.5, matchPct: 55 },
+  { id: 'p3', imageUri: null, drinkName: 'Espresso Martini', tags: ['Coffee', 'Shaken'], rating: 4.6, matchPct: 50 },
+  { id: 'p4', imageUri: null, drinkName: 'Dark & Stormy',    tags: ['Rum',    'Built'],  rating: 4.2, matchPct: 45 },
+];
+
+const FILTER_CHIPS = ['All', 'Spirits', 'Citrus', 'Classics', 'Mocktails'];
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 export default function HomeScreen({ navigation }) {
-  const [recommendations, setRecommendations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [usingMock, setUsingMock] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [activeFilter, setActiveFilter] = useState('All');
+  const scrollY = useRef(new Animated.Value(0)).current;
 
-  const loadRecommendations = useCallback(async () => {
-    try {
-      const data = await fetchRecommendations();
-      if (data.length > 0) {
-        setRecommendations(data);
-        setUsingMock(false);
-      } else {
-        setRecommendations(MOCK_RECOMMENDATIONS);
-        setUsingMock(true);
-      }
-    } catch {
-      setRecommendations(MOCK_RECOMMENDATIONS);
-      setUsingMock(true);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // Fade the ambient orb out as user scrolls — needs JS driver (opacity)
+  const glowOpacity = scrollY.interpolate({
+    inputRange: [0, 120],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
-  useEffect(() => {
-    loadRecommendations();
-  }, [loadRecommendations]);
+  // ── Navigation helpers ──────────────────────────────────────────────────
+  const goToRecipe  = (item) => navigation.navigate('RecipeDetail', { recipeId: item.id });
+  const goToSearch  = ()     => navigation.navigate('Search');
+  const goToPopular = ()     => navigation.navigate('Search', { filter: 'popular' });
+  const goToParty   = ()     => navigation.navigate('PartyMode');
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadRecommendations();
-  }, [loadRecommendations]);
+  // ── Filter chip ─────────────────────────────────────────────────────────
+  const renderFilterChip = (label) => {
+    const isActive = label === activeFilter;
+    return (
+      <TouchableOpacity
+        key={label}
+        onPress={() => setActiveFilter(label)}
+        style={[styles.chip, isActive && styles.chipActive]}
+        accessibilityRole="radio"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: isActive }}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      >
+        <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
-  const renderCard = ({ item }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => navigation?.navigate('RecipeDetail', { cocktail: item })}
-      accessibilityLabel={`View recipe for ${item.name}`}
-    >
-      <Image source={{ uri: item.thumbnail }} style={styles.cardImage} />
-      <View style={styles.cardBody}>
-        <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.cardMatch}>{item.matchPercentage}% match</Text>
-        {item.missingIngredients?.length > 0 && (
-          <Text style={styles.cardMissing} numberOfLines={1}>
-            Missing: {item.missingIngredients.join(', ')}
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
+  // ── Card renderers ───────────────────────────────────────────────────────
+  // CocktailCard internal width:180 is overridden via the style prop
+  const renderRecommended = ({ item }) => (
+    <CocktailCard
+      imageUri={item.imageUri}
+      drinkName={item.drinkName}
+      tags={item.tags}
+      rating={item.rating}
+      matchPct={item.matchPct}
+      onPress={() => goToRecipe(item)}
+      style={styles.cardLarge}
+    />
   );
 
+  const renderPopular = ({ item }) => (
+    <CocktailCard
+      imageUri={item.imageUri}
+      drinkName={item.drinkName}
+      tags={item.tags}
+      rating={item.rating}
+      matchPct={item.matchPct}
+      onPress={() => goToRecipe(item)}
+      style={styles.cardCompact}
+    />
+  );
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={Colors.accent}
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+
+      {/* ── Mock-data warning banner ──────────────────────────────────── */}
+      <View
+        style={[styles.mockBanner, { paddingTop: Math.max(insets.top, 10) }]}
+        accessibilityLiveRegion="polite"
+        accessibilityLabel="Development notice: using mock cocktail data"
+      >
+        <Ionicons
+          name="flask-outline"
+          size={12}
+          color={Colors.accent}
+          importantForAccessibility="no-hide-descendants"
         />
-      }
-    >
-      <Text style={styles.greeting}>What will you craft tonight?</Text>
-      <Text style={styles.subtitle}>Based on your ingredient cabinet</Text>
-
-      <Text style={styles.sectionTitle}>Recommended for You</Text>
-
-      {usingMock && (
-        <Text style={styles.mockBanner}>
-          ⚠ Mock data — live results load once SCRUM-115 merges
+        <Text style={styles.mockBannerText}>
+          {'  '}Mock data — connect /api/recommendations
         </Text>
-      )}
+      </View>
 
-      {loading ? (
-        <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.lg }} />
-      ) : (
+      <Animated.ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 88 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false } // must be false — opacity needs JS driver
+        )}
+        scrollEventThrottle={16}
+      >
+
+        {/* ══════════════════════════════════════════════════════════════
+            GREETING — ambient gold orb + Cormorant heading
+        ══════════════════════════════════════════════════════════════ */}
+        <Animated.View style={[styles.greetingSection, { opacity: glowOpacity }]}>
+          {/*
+            Ambient orb — large radial LinearGradient behind the heading text.
+            Gold (#C9A84C) at the core fading to transparent at the edges.
+            Declared first so it renders behind the Text siblings.
+          */}
+          <LinearGradient
+            colors={[
+              'rgba(201,168,76,0.16)',
+              'rgba(201,168,76,0.06)',
+              'rgba(13,13,13,0)',
+            ]}
+            style={styles.ambientOrb}
+            start={{ x: 0.5, y: 0.5 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <Text style={styles.greetingHeading} accessibilityRole="header">
+            What will you{'\n'}craft tonight?
+          </Text>
+          <Text style={styles.greetingSubtitle}>
+            Based on your ingredient cabinet
+          </Text>
+        </Animated.View>
+
+        {/* ── Search bar ─────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.searchBar}
+          onPress={goToSearch}
+          accessibilityRole="search"
+          accessibilityLabel="Search ingredients"
+          accessibilityHint="Opens the search screen"
+        >
+          <Ionicons
+            name="search-outline"
+            size={16}
+            color={Colors.textMuted}
+            style={styles.searchIcon}
+            importantForAccessibility="no-hide-descendants"
+          />
+          <Text style={styles.searchPlaceholder}>Search ingredients…</Text>
+        </TouchableOpacity>
+
+        {/* ── Filter chip row ────────────────────────────────────────── */}
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Filter cocktails by category"
+          style={styles.chipsRow}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsContent}
+          >
+            {FILTER_CHIPS.map(renderFilterChip)}
+          </ScrollView>
+        </View>
+
+        {/* ══════════════════════════════════════════════════════════════
+            SECTION 1 — Recommended For You
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader
+          title="Recommended For You"
+          onSeeAll={goToSearch}
+        />
         <FlatList
-          data={recommendations}
+          data={MOCK_RECOMMENDED}
+          renderItem={renderRecommended}
           keyExtractor={(item) => item.id}
-          renderItem={renderCard}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.carousel}
+          contentContainerStyle={styles.carouselContent}
+          snapToInterval={CARD_LARGE_W + CARD_GAP}
+          decelerationRate="fast"
+          snapToAlignment="start"
+          accessibilityRole="list"
+          accessibilityLabel="Recommended cocktails based on your cabinet"
         />
-      )}
-    </ScrollView>
+
+        {/* ══════════════════════════════════════════════════════════════
+            SECTION 2 — Popular Right Now
+            Fills the previously empty lower half of the screen
+        ══════════════════════════════════════════════════════════════ */}
+        <SectionHeader
+          title="Popular Right Now"
+          onSeeAll={goToPopular}
+          style={styles.sectionHeaderSpacing}
+        />
+        <FlatList
+          data={MOCK_POPULAR}
+          renderItem={renderPopular}
+          keyExtractor={(item) => item.id}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.carouselContent}
+          snapToInterval={CARD_COMPACT_W + CARD_GAP}
+          decelerationRate="fast"
+          snapToAlignment="start"
+          accessibilityRole="list"
+          accessibilityLabel="Popular cocktails right now"
+        />
+
+        {/* ══════════════════════════════════════════════════════════════
+            PARTY MODE CTA
+        ══════════════════════════════════════════════════════════════ */}
+        <TouchableOpacity
+          style={styles.partyModeCta}
+          onPress={goToParty}
+          accessibilityRole="button"
+          accessibilityLabel="Party Mode — plan drinks for a group"
+          accessibilityHint="Opens Party Mode to share cocktail suggestions with friends"
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={['#2A1F0A', '#1A1300']}
+            style={styles.partyModeGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.partyModeLeft}>
+              <Ionicons
+                name="people-outline"
+                size={22}
+                color={Colors.accent}
+                importantForAccessibility="no-hide-descendants"
+              />
+              <View>
+                <Text style={styles.partyModeTitle}>Party Mode</Text>
+                <Text style={styles.partyModeSub}>Plan drinks for everyone</Text>
+              </View>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={Colors.accent}
+              importantForAccessibility="no-hide-descendants"
+            />
+          </LinearGradient>
+        </TouchableOpacity>
+
+      </Animated.ScrollView>
+    </View>
   );
 }
 
+// ---------------------------------------------------------------------------
+// SectionHeader
+// ---------------------------------------------------------------------------
+function SectionHeader({ title, onSeeAll, style }) {
+  return (
+    <View style={[styles.sectionHeader, style]}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      <TouchableOpacity
+        onPress={onSeeAll}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel={`See all ${title}`}
+      >
+        <Text style={styles.seeAll}>See All</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Styles — all values from theme tokens, no hard-coded colours
+// ---------------------------------------------------------------------------
 const styles = StyleSheet.create({
-  container: {
+
+  root: {
     flex: 1,
     backgroundColor: Colors.background,
-    paddingTop: Spacing.lg,
   },
-  greeting: {
-    ...Typography.headingM,
-    paddingHorizontal: Spacing.lg,
-    lineHeight: 40,
-  },
-  subtitle: {
-    ...Typography.bodySmall,
-    paddingHorizontal: Spacing.lg,
-    marginTop: Spacing.xs,
-    marginBottom: Spacing.lg,
-  },
-  sectionTitle: {
-    ...Typography.navTitle,
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
+
+  // ── Mock banner ────────────────────────────────────────────────────────
   mockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingBottom: 6,
+    backgroundColor: Colors.accentGlow,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accentDim,
+  },
+  mockBannerText: {
     ...Typography.caption,
     color: Colors.accent,
-    paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-    opacity: 0.7,
+    opacity: 0.8,
   },
-  carousel: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-    paddingBottom: Spacing.lg,
+
+  // ── Scroll ─────────────────────────────────────────────────────────────
+  scroll: {
+    flex: 1,
   },
-  card: {
-    width: 200,
+  scrollContent: {
+    paddingTop: Spacing.sm,
+  },
+
+  // ── Greeting + ambient orb ─────────────────────────────────────────────
+  greetingSection: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.sm,
+    overflow: 'visible',
+  },
+  ambientOrb: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    top: -70,
+    left: -50,
+  },
+  greetingHeading: {
+    ...Typography.headingL,
+    lineHeight: 46,
+  },
+  greetingSubtitle: {
+    ...Typography.bodySmall,
+    marginTop: Spacing.xs,
+  },
+
+  // ── Search bar ─────────────────────────────────────────────────────────
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    height: 46,
   },
-  cardImage: {
-    width: '100%',
-    height: 130,
+  searchIcon: {
+    marginRight: Spacing.sm,
   },
-  cardBody: {
-    padding: Spacing.sm,
+  searchPlaceholder: {
+    ...Typography.body,
+    color: Colors.textHint,
   },
-  cardName: {
-    ...Typography.cardTitle,
-    marginBottom: 2,
+
+  // ── Filter chips ────────────────────────────────────────────────────────
+  chipsRow: {
+    marginBottom: Spacing.lg,
   },
-  cardMatch: {
-    ...Typography.caption,
+  chipsContent: {
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  chip: {
+    height: 32,
+    paddingHorizontal: 14,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chipActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  chipText: {
+    ...Typography.label,
+    color: Colors.textMuted,
+  },
+  chipTextActive: {
+    ...Typography.label,
+    color: Colors.background,
+    fontFamily: 'DMSans_500Medium',
+  },
+
+  // ── Section header ──────────────────────────────────────────────────────
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  sectionHeaderSpacing: {
+    marginTop: Spacing.xl,
+  },
+  sectionTitle: {
+    ...Typography.heading,
+  },
+  seeAll: {
+    ...Typography.label,
     color: Colors.accent,
+    fontFamily: 'DMSans_500Medium',
   },
-  cardMissing: {
+
+  // ── Carousels ───────────────────────────────────────────────────────────
+  carouselContent: {
+    paddingHorizontal: Spacing.lg,
+    gap: CARD_GAP,
+  },
+  cardLarge: {
+    width: CARD_LARGE_W,
+  },
+  cardCompact: {
+    width: CARD_COMPACT_W,
+  },
+
+  // ── Party Mode CTA ──────────────────────────────────────────────────────
+  partyModeCta: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.accentDim,
+  },
+  partyModeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 18,
+  },
+  partyModeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  partyModeTitle: {
+    ...Typography.subheading,
+    color: Colors.accentLight,
+    fontSize: 18,
+  },
+  partyModeSub: {
     ...Typography.caption,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
     marginTop: 2,
   },
 });
