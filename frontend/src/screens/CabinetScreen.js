@@ -1,13 +1,17 @@
 // frontend/src/screens/CabinetScreen.js
-// SCRUM-74 — Frontend: Build Ingredient Cabinet screen UI
-// SCRUM-75 — Frontend: Wire Ingredient Cabinet screen to backend API
+// SCRUM-148 — Cabinet UI Styling Improvements
 // Assigned to: Allisa Warren
 //
-// Displays the user's ingredient cabinet as dark-theme cards.
-// Calls cabinetService.js for all GET / POST / DELETE operations.
-// Follows design system tokens from theme/index.js.
-// Implements: FR-21 (bottom nav), FR-22 (left panel access), NFR-17 (nav bar persistence),
-//             NFR-18 (panel responsiveness), NFR-19 (accessibility).
+// Hi-fi redesign of the ingredient cabinet:
+//   • 3-column grid of ingredient tiles (matches wireframe)
+//   • Gold-accent category filter chips (All / Spirits / Mixers / Garnish)
+//   • "In Stock" / "Out of Stock" badge treatment per tile
+//   • Floating Action Button (FAB) for add — scan or manual entry
+//   • Section header with ingredient count
+//   • Pull-to-refresh, empty state, error banner preserved
+//   • All logic and API calls unchanged (SCRUM-74 / SCRUM-75)
+//
+// Implements: FR-21, FR-22, NFR-17, NFR-18, NFR-19
 
 import React, { useState, useCallback } from 'react';
 import {
@@ -22,19 +26,47 @@ import {
   SafeAreaView,
   Alert,
   RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Typography, Spacing, Radius } from '../theme/index';
-import { getCabinet, addIngredient, removeIngredient } from '../services/cabinetService';
+import { Colors, Typography, Spacing, Radius, Opacity } from '../theme/index';
+import {
+  getCabinet,
+  addIngredient,
+  removeIngredient,
+} from '../services/cabinetService';
 
-// ─── Category options matching the Firestore schema (SCRUM-70) ───────────────
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ─── Constants ─────────────────────────────────────────────────────────────────
 const CATEGORIES = ['spirit', 'mixer', 'garnish'];
+const FILTER_TABS = ['All', 'Spirits', 'Mixers', 'Garnish'];
+const FILTER_MAP = {
+  All: null,
+  Spirits: 'spirit',
+  Mixers: 'mixer',
+  Garnish: 'garnish',
+};
+
+// Tile sizing: 3-column grid with gutters
+const GRID_PADDING = Spacing.lg;
+const GRID_GAP = Spacing.sm;
+const TILE_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3;
+
+// Category emoji icons — graceful fallback if no image
+const CATEGORY_ICON = {
+  spirit: '🥃',
+  mixer: '🍋',
+  garnish: '🌿',
+};
 
 export default function CabinetScreen() {
   const [ingredients, setIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [fabOpen, setFabOpen] = useState(false);
 
   // Add-ingredient modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -44,7 +76,7 @@ export default function CabinetScreen() {
   const [formUnit, setFormUnit] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // ─── Load cabinet on screen focus ──────────────────────────────────────────
+  // ─── Load cabinet on focus ──────────────────────────────────────────────────
   useFocusEffect(
     useCallback(() => {
       loadCabinet();
@@ -69,7 +101,13 @@ export default function CabinetScreen() {
     loadCabinet();
   }
 
-  // ─── Delete ingredient ──────────────────────────────────────────────────────
+  // ─── Filtered data ──────────────────────────────────────────────────────────
+  const filteredIngredients =
+    FILTER_MAP[activeFilter] === null
+      ? ingredients
+      : ingredients.filter((i) => i.category === FILTER_MAP[activeFilter]);
+
+  // ─── Delete ─────────────────────────────────────────────────────────────────
   function confirmDelete(item) {
     Alert.alert(
       'Remove Ingredient',
@@ -94,8 +132,9 @@ export default function CabinetScreen() {
     }
   }
 
-  // ─── Add ingredient ─────────────────────────────────────────────────────────
+  // ─── Add ────────────────────────────────────────────────────────────────────
   function openModal() {
+    setFabOpen(false);
     setFormName('');
     setFormCategory('spirit');
     setFormQuantity('');
@@ -125,32 +164,50 @@ export default function CabinetScreen() {
     }
   }
 
-  // ─── Render ingredient card ─────────────────────────────────────────────────
-  function renderIngredient({ item }) {
+  // ─── Render ingredient tile ─────────────────────────────────────────────────
+  function renderTile({ item }) {
+    const inStock = true; // Future: wire to item.inStock once backend supports it
     return (
-      <View style={styles.card} accessibilityRole="none">
-        <View style={styles.cardContent}>
-          <Text style={styles.ingredientName} accessibilityRole="text">
-            {item.name}
-          </Text>
-          <Text style={styles.ingredientMeta}>
-            {item.category}
-            {item.quantity ? `  ·  ${item.quantity}${item.unit ? ' ' + item.unit : ''}` : ''}
+      <TouchableOpacity
+        style={styles.tile}
+        onLongPress={() => confirmDelete(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.name}, ${inStock ? 'In Stock' : 'Out of Stock'}. Long press to remove.`}
+        activeOpacity={0.75}
+      >
+        {/* Ingredient icon circle */}
+        <View style={styles.tileIconCircle}>
+          <Text style={styles.tileIcon}>
+            {CATEGORY_ICON[item.category] ?? '🍾'}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => confirmDelete(item)}
-          accessibilityRole="button"
-          accessibilityLabel={`Remove ${item.name}`}
+
+        {/* Name */}
+        <Text style={styles.tileName} numberOfLines={2}>
+          {item.name}
+        </Text>
+
+        {/* Stock badge */}
+        <View
+          style={[
+            styles.stockBadge,
+            inStock ? styles.stockBadgeIn : styles.stockBadgeOut,
+          ]}
         >
-          <Text style={styles.deleteIcon}>✕</Text>
-        </TouchableOpacity>
-      </View>
+          <Text
+            style={[
+              styles.stockBadgeText,
+              inStock ? styles.stockBadgeTextIn : styles.stockBadgeTextOut,
+            ]}
+          >
+            {inStock ? 'In Stock' : 'Out of Stock'}
+          </Text>
+        </View>
+      </TouchableOpacity>
     );
   }
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  // ─── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={styles.centered}>
@@ -159,42 +216,74 @@ export default function CabinetScreen() {
     );
   }
 
+  // ─── Main render ────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.title}>My Cabinet</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={openModal}
-          accessibilityRole="button"
-          accessibilityLabel="Add ingredient"
-        >
-          <Text style={styles.addButtonText}>+ Add</Text>
-        </TouchableOpacity>
+        <Text style={styles.screenTitle}>My Cabinet</Text>
+        <Text style={styles.ingredientCount}>
+          {ingredients.length} ingredient{ingredients.length !== 1 ? 's' : ''}
+        </Text>
       </View>
 
-      {/* Error state */}
+      {/* ── Gold divider ── */}
+      <View style={styles.goldDivider} />
+
+      {/* ── Error banner ── */}
       {error && (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
 
-      {/* Ingredient list */}
-      {ingredients.length === 0 && !error ? (
+      {/* ── Category filter chips ── */}
+      <View style={styles.filterRow}>
+        {FILTER_TABS.map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.filterChip,
+              activeFilter === tab && styles.filterChipActive,
+            ]}
+            onPress={() => setActiveFilter(tab)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeFilter === tab }}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                activeFilter === tab && styles.filterChipTextActive,
+              ]}
+            >
+              {tab}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ── Grid or empty state ── */}
+      {filteredIngredients.length === 0 && !error ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Your cabinet is empty.</Text>
+          <Text style={styles.emptyIcon}>🧪</Text>
+          <Text style={styles.emptyText}>
+            {activeFilter === 'All'
+              ? 'Your cabinet is empty.'
+              : `No ${activeFilter.toLowerCase()} yet.`}
+          </Text>
           <Text style={styles.emptySubtext}>
-            Tap "+ Add" to start building your ingredient list.
+            Tap the + button to add your first ingredient.
           </Text>
         </View>
       ) : (
         <FlatList
-          data={ingredients}
+          data={filteredIngredients}
           keyExtractor={(item) => item.id}
-          renderItem={renderIngredient}
-          contentContainerStyle={styles.list}
+          renderItem={renderTile}
+          numColumns={3}
+          contentContainerStyle={styles.grid}
+          columnWrapperStyle={styles.gridRow}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -205,7 +294,63 @@ export default function CabinetScreen() {
         />
       )}
 
-      {/* Add Ingredient Modal */}
+      {/* ── FAB ── */}
+      {fabOpen && (
+        <View style={styles.fabMenu}>
+          {/* Scan option — future hook for SCRUM-151 */}
+          <TouchableOpacity
+            style={styles.fabMenuItem}
+            onPress={() => {
+              setFabOpen(false);
+              Alert.alert(
+                'Scan Ingredient',
+                'OCR scanning coming in Sprint 4 (SCRUM-151).'
+              );
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Scan ingredient label"
+          >
+            <Text style={styles.fabMenuItemText}>Scan Label</Text>
+            <View style={styles.fabMenuItemIcon}>
+              <Text style={styles.fabMenuItemIconText}>📷</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.fabMenuItem}
+            onPress={openModal}
+            accessibilityRole="button"
+            accessibilityLabel="Add ingredient manually"
+          >
+            <Text style={styles.fabMenuItemText}>Add Manually</Text>
+            <View style={styles.fabMenuItemIcon}>
+              <Text style={styles.fabMenuItemIconText}>✏️</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* FAB backdrop */}
+      {fabOpen && (
+        <TouchableOpacity
+          style={styles.fabBackdrop}
+          onPress={() => setFabOpen(false)}
+          activeOpacity={1}
+          accessibilityLabel="Close menu"
+        />
+      )}
+
+      {/* FAB button */}
+      <TouchableOpacity
+        style={[styles.fab, fabOpen && styles.fabOpen]}
+        onPress={() => setFabOpen((v) => !v)}
+        accessibilityRole="button"
+        accessibilityLabel={fabOpen ? 'Close add menu' : 'Add ingredient'}
+      >
+        <Text style={styles.fabIcon}>{fabOpen ? '✕' : '+'}</Text>
+      </TouchableOpacity>
+
+      {/* ── Add Ingredient Modal ── */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -214,13 +359,16 @@ export default function CabinetScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
+            {/* Modal handle */}
+            <View style={styles.modalHandle} />
+
             <Text style={styles.modalTitle}>Add Ingredient</Text>
 
             <Text style={styles.label}>Name *</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. Rum, Lime Juice"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textHint}
               value={formName}
               onChangeText={setFormName}
               autoFocus
@@ -240,6 +388,9 @@ export default function CabinetScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: formCategory === cat }}
                 >
+                  <Text style={styles.categoryChipIcon}>
+                    {CATEGORY_ICON[cat]}
+                  </Text>
                   <Text
                     style={[
                       styles.categoryChipText,
@@ -256,7 +407,7 @@ export default function CabinetScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g. 750"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textHint}
               value={formQuantity}
               onChangeText={setFormQuantity}
               keyboardType="numeric"
@@ -267,7 +418,7 @@ export default function CabinetScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g. ml, oz, bottle"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textHint}
               value={formUnit}
               onChangeText={setFormUnit}
               accessibilityLabel="Unit"
@@ -281,6 +432,7 @@ export default function CabinetScreen() {
               >
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={handleAdd}
@@ -291,7 +443,7 @@ export default function CabinetScreen() {
                 {submitting ? (
                   <ActivityIndicator size="small" color={Colors.background} />
                 ) : (
-                  <Text style={styles.confirmText}>Add</Text>
+                  <Text style={styles.confirmText}>Add to Cabinet</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -302,7 +454,7 @@ export default function CabinetScreen() {
   );
 }
 
-// ─── Styles — all values from theme/index.js tokens ─────────────────────────
+// ─── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -314,28 +466,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.background,
   },
+
+  // ── Header ──
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
   },
-  title: {
-    ...Typography.heading,
+  screenTitle: {
+    ...Typography.headingM,
     color: Colors.textPrimary,
   },
-  addButton: {
+  ingredientCount: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+
+  // ── Gold divider ──
+  goldDivider: {
+    height: 1,
     backgroundColor: Colors.accent,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.pill,
+    opacity: Opacity.goldDivider,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
   },
-  addButtonText: {
-    ...Typography.labelMedium,
-    color: Colors.background,
-  },
+
+  // ── Error ──
   errorBanner: {
     marginHorizontal: Spacing.lg,
     marginBottom: Spacing.sm,
@@ -347,60 +507,202 @@ const styles = StyleSheet.create({
     ...Typography.bodySmall,
     color: Colors.error,
   },
-  list: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xl,
-  },
-  card: {
+
+  // ── Filter chips ──
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  filterChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
+  },
+  filterChipActive: {
+    backgroundColor: Colors.accentSubtle,
+    borderColor: Colors.accent,
+  },
+  filterChipText: {
+    ...Typography.labelSmall,
+    color: Colors.textSecondary,
+  },
+  filterChipTextActive: {
+    color: Colors.accent,
+  },
+
+  // ── Grid ──
+  grid: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 100, // room above FAB
+  },
+  gridRow: {
+    gap: GRID_GAP,
+    marginBottom: GRID_GAP,
+  },
+
+  // ── Ingredient tile ──
+  tile: {
+    width: TILE_SIZE,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
-    marginBottom: Spacing.sm,
-    padding: Spacing.md,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  ingredientName: {
-    ...Typography.bodyMedium,
-    color: Colors.textPrimary,
-  },
-  ingredientMeta: {
-    ...Typography.bodySmall,
-    color: Colors.textMuted,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
-  deleteButton: {
+    borderWidth: 1,
+    borderColor: Colors.border,
     padding: Spacing.sm,
-    marginLeft: Spacing.sm,
+    alignItems: 'center',
+    minHeight: TILE_SIZE + 20,
   },
-  deleteIcon: {
-    color: Colors.textMuted,
-    fontSize: 14,
+  tileIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    opacity: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
   },
+  tileIcon: {
+    fontSize: 22,
+  },
+  tileName: {
+    ...Typography.caption,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+    lineHeight: 15,
+  },
+
+  // Stock badge
+  stockBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+  },
+  stockBadgeIn: {
+    backgroundColor: '#4CAF7222', // success tint
+  },
+  stockBadgeOut: {
+    backgroundColor: Colors.errorSurface,
+  },
+  stockBadgeText: {
+    fontSize: 9,
+    fontFamily: 'DMSans_500Medium',
+    letterSpacing: 0.3,
+  },
+  stockBadgeTextIn: {
+    color: Colors.success,
+  },
+  stockBadgeTextOut: {
+    color: Colors.error,
+  },
+
+  // ── Empty state ──
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xxl,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: Spacing.md,
   },
   emptyText: {
-    ...Typography.bodyMedium,
+    ...Typography.headingXS,
     color: Colors.textPrimary,
     textAlign: 'center',
+    marginBottom: Spacing.sm,
   },
   emptySubtext: {
     ...Typography.bodySmall,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: Spacing.sm,
+    lineHeight: 18,
   },
-  // Modal
+
+  // ── FAB ──
+  fabBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    zIndex: 10,
+  },
+  fabMenu: {
+    position: 'absolute',
+    bottom: 90,
+    right: Spacing.lg,
+    alignItems: 'flex-end',
+    zIndex: 20,
+    gap: Spacing.sm,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  fabMenuItemText: {
+    ...Typography.labelMedium,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  fabMenuItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fabMenuItemIconText: {
+    fontSize: 18,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: Spacing.xl,
+    right: Spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  fabOpen: {
+    backgroundColor: Colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+  },
+  fabIcon: {
+    fontSize: 24,
+    color: Colors.background,
+    lineHeight: 28,
+  },
+
+  // ── Modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
@@ -408,15 +710,25 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radius.lg,
     borderTopRightRadius: Radius.lg,
     padding: Spacing.lg,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.xxl,
+    borderTopWidth: 1,
+    borderColor: Colors.accent + '44',
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.pill,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
   },
   modalTitle: {
-    ...Typography.heading,
+    ...Typography.headingXS,
     color: Colors.textPrimary,
     marginBottom: Spacing.md,
   },
   label: {
-    ...Typography.labelMedium,
+    ...Typography.label,
     color: Colors.textSecondary,
     marginBottom: Spacing.xs,
     marginTop: Spacing.sm,
@@ -431,21 +743,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+
+  // Category chips in modal
   categoryRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
     marginBottom: Spacing.xs,
   },
   categoryChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: Radius.pill,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
+    backgroundColor: Colors.background,
   },
   categoryChipActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: Colors.accentSubtle,
     borderColor: Colors.accent,
+  },
+  categoryChipIcon: {
+    fontSize: 14,
   },
   categoryChipText: {
     ...Typography.labelSmall,
@@ -453,8 +775,10 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   categoryChipTextActive: {
-    color: Colors.background,
+    color: Colors.accent,
   },
+
+  // Modal action buttons
   modalActions: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -473,7 +797,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   confirmButton: {
-    flex: 1,
+    flex: 2,
     padding: Spacing.md,
     borderRadius: Radius.md,
     backgroundColor: Colors.accent,
