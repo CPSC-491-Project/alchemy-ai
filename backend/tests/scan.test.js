@@ -4,12 +4,20 @@
 // (GCV → matcher → response). Live GCV is NOT exercised here — it requires
 // credentials and a network call.
 //
-// To force MOCK mode deterministically, we:
+// To force MOCK mode and skip Firestore deterministically, we:
 //   1. Unset GCV_CREDENTIALS_BASE64 and GOOGLE_APPLICATION_CREDENTIALS
 //      in beforeAll.
-//   2. Call visionService._resetForTests() so credential detection reruns.
+//   2. Set SCAN_DISABLE_FIRESTORE_CACHE=true so the vocabulary service
+//      bypasses Firestore (which otherwise tries to contact GCP and
+//      hangs on machines with firebase-admin installed but no project ID).
+//   3. Call visionService._resetForTests() so credential detection reruns.
 
 const request = require('supertest');
+
+// The Firebase Auth middleware calls Google servers to verify a malformed
+// token. On machines with firebase-admin installed, this can take several
+// seconds to reject. Give the test suite enough headroom to not timeout.
+jest.setTimeout(15000);
 
 describe('Scan route — auth guards', () => {
   let app;
@@ -17,6 +25,8 @@ describe('Scan route — auth guards', () => {
   beforeAll(() => {
     delete process.env.GCV_CREDENTIALS_BASE64;
     delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.SCAN_DISABLE_FIRESTORE_CACHE = 'true';
+    jest.resetModules();
     // eslint-disable-next-line global-require
     app = require('../app');
   });
@@ -49,6 +59,7 @@ describe('Scan route — mock mode happy path', () => {
     // Make sure no GCV creds leak in from a local .env.
     delete process.env.GCV_CREDENTIALS_BASE64;
     delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.SCAN_DISABLE_FIRESTORE_CACHE = 'true';
 
     // Force the fresh require paths — clear cache first so our stub gets picked up.
     jest.resetModules();
@@ -57,6 +68,18 @@ describe('Scan route — mock mode happy path', () => {
     jest.doMock('../middleware/verifyToken', () => (req, _res, next) => {
       req.user = { uid: 'test-user-uid' };
       next();
+    });
+
+    // Stub the live CocktailDB fetch so the vocabulary service falls back
+    // to the static list without any network attempt. (Tests on machines
+    // without internet shouldn't hang waiting for CocktailDB either.)
+    jest.doMock('../services/cocktailDbVocabulary', () => {
+      // eslint-disable-next-line global-require
+      const { INGREDIENTS } = require('../data/ingredientVocabulary');
+      return {
+        getVocabulary: async () => INGREDIENTS,
+        _resetMemo: () => {},
+      };
     });
 
     // eslint-disable-next-line global-require
@@ -69,6 +92,7 @@ describe('Scan route — mock mode happy path', () => {
 
   afterAll(() => {
     jest.dontMock('../middleware/verifyToken');
+    jest.dontMock('../services/cocktailDbVocabulary');
     jest.resetModules();
   });
 
