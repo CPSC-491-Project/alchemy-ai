@@ -9,7 +9,19 @@
       "**/*"
     ],
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Alchemy AI to use your camera to read ingredient labels."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Alchemy AI to access your photo library to choose a label image."
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": false,
