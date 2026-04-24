@@ -27,9 +27,15 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraType } from 'expo-camera';
+// SDK 54: `Camera` was renamed to `CameraView`, and `useCameraPermissions`
+// is now a top-level named export instead of a static on Camera.
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// SDK 54: the legacy file-system API is now under /legacy. The new API
+// (object-oriented) lives at the default `expo-file-system` import. We
+// stick with legacy here to keep this PR focused on Camera changes —
+// migrating to the new File API is a separate concern.
+import * as FileSystem from 'expo-file-system/legacy';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { scanImage } from '../services/scanService';
 
@@ -43,7 +49,7 @@ const S = {
 
 export default function ScanScreen({ navigation }) {
   const [screenState, setScreenState] = useState(S.CAPTURE);
-  const [cameraPermission, requestCameraPermission] = Camera.useCameraPermissions();
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [result, setResult] = useState(null); // { rawOcrText, candidates, mode }
   const [errorMessage, setErrorMessage] = useState('');
   const cameraRef = useRef(null);
@@ -153,10 +159,11 @@ export default function ScanScreen({ navigation }) {
   return (
     <View style={styles.cameraContainer}>
       <StatusBar barStyle="light-content" />
-      <Camera
+      {/* SDK 54: CameraView replaces Camera; `type` prop is now `facing` and takes 'back'|'front' string */}
+      <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
-        type={CameraType.back}
+        facing="back"
       />
 
       {/* Top bar */}
