@@ -37,7 +37,28 @@ function isFresh(ts) {
 // credentials (unit tests, local dev without GCP) can still import this
 // module without throwing. Mirrors the pattern used by visionService
 // (SCRUM-187, upcoming).
+// Timeout wrapper — prevents Firestore network calls from hanging the
+// request thread when credentials are misconfigured or the network is
+// flaky. 2s is far above Firestore's typical p99 (<100ms) and well below
+// express timeouts.
+const FIRESTORE_TIMEOUT_MS = 2000;
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function getFirestore() {
+  // Explicit opt-out — used by tests, and by any deployment that wants to
+  // skip the Firestore cache layer entirely (e.g. free-tier Render box
+  // where the latency isn't worth it).
+  if (process.env.SCAN_DISABLE_FIRESTORE_CACHE === 'true') return null;
   try {
     const admin = require('../firebase-admin');
     return admin.firestore();
@@ -50,7 +71,11 @@ async function readFirestoreCache() {
   const db = getFirestore();
   if (!db) return null;
   try {
-    const snap = await db.doc(FIRESTORE_DOC).get();
+    const snap = await withTimeout(
+      db.doc(FIRESTORE_DOC).get(),
+      FIRESTORE_TIMEOUT_MS,
+      '[vocabulary] Firestore read'
+    );
     if (!snap.exists) return null;
     const data = snap.data();
     if (!Array.isArray(data.vocab) || !data.fetchedAt) return null;
@@ -66,7 +91,11 @@ async function writeFirestoreCache(vocab) {
   const db = getFirestore();
   if (!db) return;
   try {
-    await db.doc(FIRESTORE_DOC).set({ vocab, fetchedAt: Date.now() });
+    await withTimeout(
+      db.doc(FIRESTORE_DOC).set({ vocab, fetchedAt: Date.now() }),
+      FIRESTORE_TIMEOUT_MS,
+      '[vocabulary] Firestore write'
+    );
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[vocabulary] Firestore write failed:', err.message);
@@ -110,7 +139,10 @@ async function getVocabulary() {
       const fetchedAt = Date.now();
       memo = { vocab, fetchedAt };
       // Best-effort cache write; don't await to avoid blocking the caller.
-      writeFirestoreCache(vocab);
+      // Attach a catch handler so rejections (Firestore unreachable, etc.)
+      // don't turn into unhandled promise rejections after the response
+      // has already been sent.
+      writeFirestoreCache(vocab).catch(() => { /* already logged */ });
       return vocab;
     }
   } catch (err) {

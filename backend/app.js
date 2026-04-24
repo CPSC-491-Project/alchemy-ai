@@ -5,7 +5,9 @@ require("dotenv").config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// SCRUM-187: bumped from default 100kb to 15mb for base64-encoded phone
+// photos sent to /api/scan (a ~5MB JPEG is ~6.7MB after base64 encoding).
+app.use(express.json({ limit: "15mb" }));
 
 app.get("/", (req, res) => {
   res.json({ message: "Alchemy AI Backend Running" });
@@ -26,6 +28,10 @@ app.use("/api/recipes", cocktailsRouter);
 // SCRUM-52: Profile routes
 const profileRouter = require("./routes/profile");
 app.use("/api/me", profileRouter);
+
+// SCRUM-187: Scan route — POST /api/scan (GCV OCR + ingredient matcher)
+const scanRouter = require("./routes/scan");
+app.use("/api/scan", scanRouter);
 
 // SCRUM-142: 404 catch-all — no route matched
 app.use((req, res) => {
