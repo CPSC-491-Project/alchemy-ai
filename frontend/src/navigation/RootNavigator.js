@@ -4,6 +4,7 @@
 // SCRUM-130: Added CocktailDetail screen
 // SCRUM-126: Added RecipeDetail screen (coordinate with feature/SCRUM-126-recipe-detail-screen)
 // ingredient-cabinet-ui: Added IngredientCabinet screen (coordinate with feature/ingredient-cabinet-ui)
+// SCRUM-185: Added Scan screen (image-based ingredient scanning — SCRUM-151)
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -13,13 +14,16 @@ import LoginScreen          from '../screens/LoginScreen';
 import TabNavigator         from './TabNavigator';
 import CocktailDetailScreen from '../screens/CocktailDetailScreen';
 
-// RecipeDetailScreen and CabinetScreen imported lazily to avoid breaking
-// builds when those branches have not yet been merged into develop.
-// Remove the try/catch wrappers once SCRUM-126 and ingredient-cabinet-ui are merged.
+// RecipeDetailScreen, CabinetScreen, and ScanScreen imported lazily to avoid
+// breaking builds when those branches have not yet been merged into develop.
+// Remove the try/catch wrappers once SCRUM-126, ingredient-cabinet-ui, and
+// SCRUM-151 are merged.
 let RecipeDetailScreen = null;
 let CabinetScreen = null;
+let ScanScreen = null;
 try { RecipeDetailScreen = require('../screens/RecipeDetailScreen').default; } catch (_e) { RecipeDetailScreen = null; }
 try { CabinetScreen = require('../screens/CabinetScreen').default; } catch (_e) { CabinetScreen = null; }
+try { ScanScreen = require('../screens/ScanScreen').default; } catch (_e) { ScanScreen = null; }
 
 const Stack = createNativeStackNavigator();
 
@@ -48,6 +52,13 @@ export default function RootNavigator({ user }) {
           <Stack.Screen
             name="IngredientCabinet"
             component={CabinetScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+        )}
+        {ScanScreen && (
+          <Stack.Screen
+            name="Scan"
+            component={ScanScreen}
             options={{ animation: 'slide_from_right' }}
           />
         )}

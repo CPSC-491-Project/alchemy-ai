@@ -200,24 +200,42 @@ export default function CreateScreen({ navigation }) {
         ))}
       </View>
 
-      {/* ── CTA button ── */}
-      <TouchableOpacity
-        style={styles.ctaButton}
-        activeOpacity={0.85}
-        accessibilityLabel="Make this cocktail"
-        onPress={() =>
-          navigation?.navigate('RecipeDetail', { cocktail: currentCocktail })
-        }
-      >
-        <LinearGradient
-          colors={[Colors.goldGradientStart, Colors.goldGradientEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.ctaGradient}
+      {/* ── CTA row: Scan Ingredient (secondary) + Make This Cocktail (primary) ── */}
+      <View style={styles.ctaRow}>
+        {/* SCRUM-151: Scan Ingredient — navigates to Scan screen (camera-based ingredient input) */}
+        <TouchableOpacity
+          style={styles.scanButton}
+          activeOpacity={0.85}
+          accessibilityLabel="Scan ingredient with camera"
+          onPress={() => navigation?.navigate('Scan')}
         >
-          <Text style={styles.ctaText}>Make This Cocktail</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+          <Ionicons
+            name="camera-outline"
+            size={18}
+            color={Colors.accent}
+            style={styles.scanIcon}
+          />
+          <Text style={styles.scanText}>Scan Ingredient</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.ctaButton}
+          activeOpacity={0.85}
+          accessibilityLabel="Make this cocktail"
+          onPress={() =>
+            navigation?.navigate('RecipeDetail', { cocktail: currentCocktail })
+          }
+        >
+          <LinearGradient
+            colors={[Colors.goldGradientStart, Colors.goldGradientEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaGradient}
+          >
+            <Text style={styles.ctaText}>Make This Cocktail</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
 
       {/* ── Quick Style pills ── */}
       <View style={styles.quickStyleBlock}>
@@ -404,10 +422,40 @@ const styles = StyleSheet.create({
     width: 16,
   },
 
-  // CTA Button
-  ctaButton: {
+  // CTA Row (Scan + Make This Cocktail)
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: Spacing.lg,
     marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+
+  // Scan Ingredient (secondary CTA — SCRUM-151)
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentSubtle,
+  },
+  scanIcon: {
+    marginRight: 6,
+  },
+  scanText: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 14,
+    color: Colors.accent,
+    letterSpacing: 0.3,
+  },
+
+  // CTA Button (Make This Cocktail — primary)
+  ctaButton: {
+    flex: 1,
     borderRadius: Radius.pill,
     overflow: 'hidden',
   },
