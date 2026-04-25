@@ -76,7 +76,10 @@ jest.mock('expo-web-browser', () => ({
 
 jest.mock('../components/CocktailCard', () => {
   const { Text } = require('react-native');
-  return ({ drinkName }) => <Text testID="cocktail-card">{drinkName}</Text>;
+  function MockCocktailCard({ drinkName }) {
+    return <Text testID="cocktail-card">{drinkName}</Text>;
+  }
+  return MockCocktailCard;
 });
 
 // ─── Screen imports ───────────────────────────────────────────────────────────
