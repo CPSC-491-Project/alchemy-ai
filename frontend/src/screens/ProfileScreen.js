@@ -33,7 +33,7 @@ function BottomModal({ visible, onClose, title, children }) {
   );
 }
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const { user } = useAuth();
   const [fontsLoaded] = useFonts({ CormorantGaramond_300Light, DMSans_400Regular });
 
@@ -59,6 +59,13 @@ export default function ProfileScreen() {
   const openPrivacy = () => setOpenModal('privacy');
   const openBilling = () => setOpenModal('billing');
   const closeModal  = () => setOpenModal(null);
+  // FR-23: right panel must expose Ingredient Cabinet
+  // ProfileScreen is inside a Tab, CabinetScreen is in the root Stack,
+  // so we need getParent() to reach the root stack navigator.
+  const goToCabinet = () => {
+    const rootNav = navigation?.getParent();
+    (rootNav ?? navigation)?.navigate('IngredientCabinet');
+  };
 
   const savePreferences = async (patch) => {
     setSaving(true);
@@ -126,6 +133,7 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionLabel}>PREFERENCES</Text>
         <View style={styles.card}>
+          <Row label="Ingredient Cabinet"      value="View my cabinet"                 onPress={goToCabinet} />
           <Row label="Flavor Preferences"     value={flavorDisplay}                   onPress={openFlavor}  />
           <Row label="Units & Measurements"   value={unit === 'oz' ? 'oz' : 'ml'}     onPress={openUnits}   />
           <Row label="Notifications"          onPress={() => {}}                       />
