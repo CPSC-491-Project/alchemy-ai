@@ -111,7 +111,9 @@ export default function ProfileScreen({ navigation }) {
     setError(null);
     try {
       if (!getUserProfile) throw new Error('userService not available');
-      const data = await getUserProfile();
+      if (!authUser) throw new Error('No authenticated user');
+      const idToken = await authUser.getIdToken();
+      const data = await getUserProfile(idToken);
       setProfile(data);
       if (data?.preferences?.notificationsEnabled !== undefined) {
         setNotificationsEnabled(data.preferences.notificationsEnabled);
