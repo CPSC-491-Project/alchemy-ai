@@ -6,6 +6,8 @@
 //   GET /api/recipes/:id  (SCRUM-116) once that PR merges.
 // =============================================================
 import React, { useState } from 'react';
+import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
+import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   SafeAreaView, StatusBar,
@@ -82,11 +84,24 @@ const StepRow = ({ index, text }) => (
 // ------------------------------------------------------------------
 export default function RecipeDetailScreen({ navigation, route }) {
   // Once SCRUM-116 merges, replace MOCK_COCKTAIL with:
-  //   const cocktail = route?.params?.cocktail ?? MOCK_COCKTAIL;
-  const cocktail = route?.params?.cocktail ?? MOCK_COCKTAIL;
+  const [fontsLoaded] = useFonts({ CormorantGaramond_300Light, DMSans_400Regular, DMSans_500Medium });
+  const raw = route?.params?.cocktail ?? MOCK_COCKTAIL;
+  const cocktail = {
+    ...raw,
+    badges: raw.badges ?? raw.tags ?? [],
+    ingredients: Array.isArray(raw.ingredients)
+      ? raw.ingredients
+      : (raw.ingredients ?? '').split(' · ').map((name, i) => ({
+          id: name[0].toUpperCase(),
+          name,
+          measure: '',
+        })),
+    steps: raw.steps ?? [],
+  };
 
   const [activeTab, setActiveTab] = useState('Ingredients');
   const TABS = ['Ingredients', 'Steps'];
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -95,7 +110,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        stickyHeaderIndices={[1]} // keeps tab row sticky on scroll
+        
       >
         {/* ── Hero image area ─────────────────────────────────── */}
         <View style={styles.hero}>
