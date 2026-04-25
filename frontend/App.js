@@ -67,7 +67,7 @@ export default function App() {
   }
 
   return (
-    <AuthProvider user={user}>
+    <AuthProvider>
       <StatusBar style="light" />
       <RootNavigator user={user} />
     </AuthProvider>
