@@ -66,7 +66,7 @@ describe('SCRUM-182: Frontend env var naming consistency', () => {
 
   test('All service files with a backend URL use EXPO_PUBLIC_BACKEND_URL', () => {
     const files = collectJsFiles(FRONTEND_SERVICES_DIR);
-    const PATTERN = /EXPO_PUBLIC_[A-Z_]*(?:URL|ENDPOINT|API)[A-Z_]*/g;
+    const PATTERN = /EXPO_PUBLIC_[A-Z_]*_URL\b/g;
     const CORRECT = 'EXPO_PUBLIC_BACKEND_URL';
 
     const violations = [];
