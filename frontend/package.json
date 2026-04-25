@@ -13,7 +13,9 @@
   },
   "jest": {
     "preset": "jest-expo",
-    "setupFilesAfterFramework": ["@testing-library/jest-native/extend-expect"],
+    "setupFilesAfterFramework": [
+      "@testing-library/jest-native/extend-expect"
+    ],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@react-native-google-signin/.*|expo-linear-gradient|expo-font|expo-auth-session|expo-web-browser|expo-crypto|expo-status-bar|@expo/vector-icons)"
     ]
