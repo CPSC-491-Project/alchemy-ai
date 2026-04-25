@@ -207,7 +207,7 @@ export default function CreateScreen({ navigation }) {
           style={styles.scanButton}
           activeOpacity={0.85}
           accessibilityLabel="Scan ingredient with camera"
-          onPress={() => navigation?.navigate('Scan')}
+          onPress={() => (navigation.getParent() ?? navigation).navigate('Scan')}
         >
           <Ionicons
             name="camera-outline"
@@ -223,7 +223,7 @@ export default function CreateScreen({ navigation }) {
           activeOpacity={0.85}
           accessibilityLabel="Make this cocktail"
           onPress={() =>
-            navigation?.navigate('RecipeDetail', { cocktail: currentCocktail })
+            (navigation.getParent() ?? navigation).navigate('RecipeDetail', { cocktail: currentCocktail })
           }
         >
           <LinearGradient
