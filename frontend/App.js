@@ -15,6 +15,7 @@ import {
 } from '@expo-google-fonts/dm-sans';
 
 import RootNavigator from './src/navigation/RootNavigator';
+import { AuthProvider } from './src/context/AuthContext';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -66,10 +67,10 @@ export default function App() {
   }
 
   return (
-    <>
+    <AuthProvider>
       <StatusBar style="light" />
       <RootNavigator user={user} />
-    </>
+    </AuthProvider>
   );
 }
 
