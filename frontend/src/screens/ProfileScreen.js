@@ -32,8 +32,8 @@ try {
 let getUserProfile, updatePreferences;
 try {
   const svc = require('../services/userService');
-  getUserProfile = svc.getUserProfile;
-  updatePreferences = svc.updatePreferences;
+  getUserProfile = svc.fetchUserProfile;
+  updatePreferences = svc.updateUserPreferences;
 } catch {
   getUserProfile = null;
   updatePreferences = null;
