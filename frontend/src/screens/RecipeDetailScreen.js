@@ -2,18 +2,15 @@
 // Alchemy AI — Recipe Detail Screen
 // SCRUM-126 | Allisa Warren | April 2026
 //
-// FIX (SCRUM-198):
-// 1. Fetches full cocktail detail via getCocktailById when the
-//    passed cocktail object has no ingredients (partial records
-//    from HomeScreen getRandomCocktail/filterByIngredient only
-//    carry {id, name, thumb, category, alcoholic} — no ingredients).
-// 2. Ingredient normalization handles all three shapes safely.
-// 3. Hero image uses raw.image ?? raw.thumb with onError fallback.
-// 4. FAB wired to "Add All to Cabinet" action.
-// 5. Ingredient header fixed: "INGREDIENT / MEASURE".
+// FIX (SCRUM-198): crash fix, full-fetch, ingredient normalization,
+//   hero image fallback, FAB wired, column headers fixed.
+// FIX (SCRUM-200): Heart favorite toggle added to hero area.
+//   Tapping the heart icon toggles filled ↔ outline with a
+//   scale-bounce animation. Local state only — persistence
+//   queued for backend integration in final delivery week.
 // =============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import {
@@ -28,12 +25,14 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { getCocktailById } from '../services/cocktailService';
 
 // ------------------------------------------------------------------
-// Mock data — used only when no route params provided
+// Mock fallback — used only when no route params provided
 // ------------------------------------------------------------------
 const MOCK_COCKTAIL = {
   id: '11007',
@@ -42,10 +41,10 @@ const MOCK_COCKTAIL = {
   difficulty: 'Intermediate',
   time: '5 min',
   ingredients: [
-    { id: 'B', name: 'Bourbon Whiskey', measure: '60ml' },
-    { id: 'S', name: 'Simple Syrup',    measure: '1 tsp' },
+    { id: 'B', name: 'Bourbon Whiskey',   measure: '60ml'   },
+    { id: 'S', name: 'Simple Syrup',      measure: '1 tsp'  },
     { id: 'A', name: 'Angostura Bitters', measure: '2 dash' },
-    { id: 'O', name: 'Orange Peel',     measure: '1 peel' },
+    { id: 'O', name: 'Orange Peel',       measure: '1 peel' },
   ],
   steps: [
     'Add simple syrup and bitters to a rocks glass.',
@@ -57,8 +56,8 @@ const MOCK_COCKTAIL = {
 
 // ------------------------------------------------------------------
 // Normalize ingredients into {id, name, measure} regardless of source
-//   Shape A — already normalized: [{id, name, measure}]
-//   Shape B — CocktailDB objects: [{name, measure}]
+//   Shape A — already normalized : [{id, name, measure}]
+//   Shape B — CocktailDB objects  : [{name, measure}]
 //   Shape C — dot-separated string: "Rum · Lime · Mint"
 // ------------------------------------------------------------------
 function normalizeIngredients(raw) {
@@ -71,7 +70,7 @@ function normalizeIngredients(raw) {
       }
       return {
         id:      item.id ?? item.name?.[0]?.toUpperCase() ?? String(i + 1),
-        name:    item.name ?? 'Unknown',
+        name:    item.name    ?? 'Unknown',
         measure: item.measure ?? '',
       };
     });
@@ -134,22 +133,43 @@ export default function RecipeDetailScreen({ navigation, route }) {
 
   const passedCocktail = route?.params?.cocktail ?? MOCK_COCKTAIL;
 
-  // Detect whether this is a partial record (no ingredients).
-  // HomeScreen passes {id, name, thumb, category, alcoholic} from
-  // getRandomCocktail/filterByIngredient — no ingredients array.
-  // When that's the case, fetch the full record from the API.
   const isPartial =
     !passedCocktail.ingredients ||
-    (Array.isArray(passedCocktail.ingredients) && passedCocktail.ingredients.length === 0);
+    (Array.isArray(passedCocktail.ingredients) &&
+      passedCocktail.ingredients.length === 0);
 
-  const [cocktailData, setCocktailData]   = useState(isPartial ? null : passedCocktail);
-  const [loadingFull, setLoadingFull]     = useState(isPartial);
-  const [fetchError, setFetchError]       = useState(null);
-  const [activeTab, setActiveTab]         = useState('Ingredients');
-  const [imageError, setImageError]       = useState(false);
+  const [cocktailData, setCocktailData] = useState(isPartial ? null : passedCocktail);
+  const [loadingFull, setLoadingFull]   = useState(isPartial);
+  const [fetchError, setFetchError]     = useState(null);
+  const [activeTab, setActiveTab]       = useState('Ingredients');
+  const [imageError, setImageError]     = useState(false);
 
+  // ── SCRUM-200: Favorite toggle ──────────────────────────────────
+  const [isFavorited, setIsFavorited] = useState(false);
+  const heartScale = useRef(new Animated.Value(1)).current;
+
+  const handleFavoriteToggle = () => {
+    // Bounce animation
+    Animated.sequence([
+      Animated.spring(heartScale, {
+        toValue: 1.4,
+        useNativeDriver: true,
+        speed: 50,
+        bounciness: 8,
+      }),
+      Animated.spring(heartScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 30,
+        bounciness: 4,
+      }),
+    ]).start();
+    setIsFavorited((prev) => !prev);
+  };
+
+  // ── Fetch full detail when passed a partial record ───────────────
   useEffect(() => {
-    if (!isPartial) return; // already have full data
+    if (!isPartial) return;
     let cancelled = false;
     async function fetchFull() {
       try {
@@ -160,7 +180,6 @@ export default function RecipeDetailScreen({ navigation, route }) {
       } catch (err) {
         if (!cancelled) {
           setFetchError(err.message);
-          // Fall back to the partial record so at least the name/badges show
           setCocktailData(passedCocktail);
         }
       } finally {
@@ -173,8 +192,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
 
   if (!fontsLoaded) return null;
 
-  // While fetching full detail, show a minimal loading state
-  // (hero placeholder + spinner) so the screen doesn't flash blank
+  // Loading state — show name + spinner while fetching full detail
   if (loadingFull) {
     return (
       <SafeAreaView style={styles.container}>
@@ -198,23 +216,23 @@ export default function RecipeDetailScreen({ navigation, route }) {
     );
   }
 
-  // Normalize the final data object
+  // Normalize
   const raw     = cocktailData ?? passedCocktail;
   const cocktail = {
     ...raw,
     badges:      raw.badges ?? raw.tags ?? [raw.category, raw.alcoholic].filter(Boolean),
     ingredients: normalizeIngredients(raw),
     steps:       raw.steps ?? (raw.instructions
-                    ? raw.instructions.split(/\.\s+/).filter(Boolean).map(s => s + '.')
-                    : []),
+                   ? raw.instructions.split(/\.\s+/).filter(Boolean).map((s) => s + '.')
+                   : []),
     image:       raw.image ?? raw.thumb ?? null,
     difficulty:  raw.difficulty ?? 'Intermediate',
     time:        raw.time ?? '',
   };
 
-  // "Add All to Cabinet" — shared by FAB and CTA button
+  // Shared add-all action
   const handleAddAllToCabinet = () => {
-    const names = cocktail.ingredients.map((i) => i.name).filter(Boolean).join(', ');
+    const names   = cocktail.ingredients.map((i) => i.name).filter(Boolean).join(', ');
     const message = names || cocktail.name;
     if (Platform.OS === 'web') {
       // eslint-disable-next-line no-alert
@@ -236,6 +254,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
       >
         {/* ── Hero ──────────────────────────────────────── */}
         <View style={styles.hero}>
+          {/* Back button — top left */}
           <TouchableOpacity
             style={styles.backBtn}
             onPress={() => navigation.goBack()}
@@ -243,6 +262,23 @@ export default function RecipeDetailScreen({ navigation, route }) {
           >
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
+
+          {/* SCRUM-200: Heart button — top right */}
+          <Animated.View style={[styles.heartBtn, { transform: [{ scale: heartScale }] }]}>
+            <TouchableOpacity
+              onPress={handleFavoriteToggle}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+              accessibilityState={{ checked: isFavorited }}
+            >
+              <Ionicons
+                name={isFavorited ? 'heart' : 'heart-outline'}
+                size={26}
+                color={Colors.accent}
+              />
+            </TouchableOpacity>
+          </Animated.View>
 
           {cocktail.image && !imageError ? (
             <Image
@@ -340,7 +376,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
 
-      {/* ── CTA ───────────────────────────────────────── */}
+      {/* ── Add All to Cabinet CTA ────────────────────── */}
       <View style={styles.ctaWrapper}>
         <TouchableOpacity
           style={styles.ctaButton}
@@ -362,30 +398,58 @@ export default function RecipeDetailScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container:     { flex: 1, backgroundColor: Colors.background },
   scrollContent: { flexGrow: 1 },
-  hero:          { width: '100%', height: 280, position: 'relative' },
-  backBtn:       { position: 'absolute', top: Spacing.md, left: Spacing.lg, zIndex: 10 },
-  backArrow:     { color: Colors.accent, fontSize: 22 },
-  heroImage:     { width: '100%', height: '100%', backgroundColor: Colors.surface },
-  heroFade:      { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, backgroundColor: Colors.background, opacity: 0.85 },
-  metaBlock:     { backgroundColor: Colors.background, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
-  drinkName:     { ...Typography.display, color: Colors.textPrimary, marginBottom: Spacing.sm },
-  badgeRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
-  badge:         { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.accent },
-  badgeLabel:    { ...Typography.label, color: Colors.accent },
-  difficultyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
-  dotsRow:       { flexDirection: 'row', gap: 4 },
-  dot:           { width: 8, height: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.accent, backgroundColor: 'transparent' },
-  dotFilled:     { backgroundColor: Colors.accent },
+
+  // ── Hero ──────────────────────────────────────────────────────────
+  hero:    { width: '100%', height: 280, position: 'relative' },
+  backBtn: {
+    position: 'absolute', top: Spacing.md, left: Spacing.lg, zIndex: 10,
+  },
+  backArrow: { color: Colors.accent, fontSize: 22 },
+
+  // SCRUM-200: heart button — top right of hero
+  heartBtn: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.lg,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  heroImage: { width: '100%', height: '100%', backgroundColor: Colors.surface },
+  heroFade:  {
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 80,
+    backgroundColor: Colors.background, opacity: 0.85,
+  },
+
+  // ── Meta block ────────────────────────────────────────────────────
+  metaBlock:      { backgroundColor: Colors.background, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
+  drinkName:      { ...Typography.display, color: Colors.textPrimary, marginBottom: Spacing.sm },
+  badgeRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
+  badge:          { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.accent },
+  badgeLabel:     { ...Typography.label, color: Colors.accent },
+  difficultyRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
+  dotsRow:        { flexDirection: 'row', gap: 4 },
+  dot:            { width: 8, height: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.accent, backgroundColor: 'transparent' },
+  dotFilled:      { backgroundColor: Colors.accent },
   difficultyLabel:{ ...Typography.bodySmall, color: Colors.textSecondary, flex: 1 },
-  timeLabel:     { ...Typography.bodySmall, color: Colors.textSecondary },
-  fetchErrorNote:{ ...Typography.caption, color: Colors.accent, opacity: 0.7, marginBottom: Spacing.sm },
-  divider:       { height: 0.5, backgroundColor: Colors.accent, opacity: 0.4, marginBottom: Spacing.md },
+  timeLabel:      { ...Typography.bodySmall, color: Colors.textSecondary },
+  fetchErrorNote: { ...Typography.caption, color: Colors.accent, opacity: 0.7, marginBottom: Spacing.sm },
+  divider:        { height: 0.5, backgroundColor: Colors.accent, opacity: 0.4, marginBottom: Spacing.md },
+
+  // ── Tabs ──────────────────────────────────────────────────────────
   tabRow:        { flexDirection: 'row', gap: Spacing.xl, paddingBottom: Spacing.sm },
   tabItem:       { alignItems: 'center', paddingBottom: Spacing.xs },
   tabLabel:      { ...Typography.body, color: Colors.textSecondary },
   tabLabelActive:{ color: Colors.textPrimary, fontWeight: '500' },
   tabUnderline:  { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5, backgroundColor: Colors.accent, borderRadius: Radius.full },
-  tabContent:    { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
+
+  // ── Tab content ───────────────────────────────────────────────────
+  tabContent:            { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
   ingredientHeader:      { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.md },
   ingredientHeaderLabel: { ...Typography.label, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
   ingredientRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.sm, gap: Spacing.md, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
@@ -393,14 +457,25 @@ const styles = StyleSheet.create({
   ingredientAvatarText:  { ...Typography.bodySmall, color: Colors.accent, fontWeight: '500' },
   ingredientName:        { ...Typography.body, color: Colors.textPrimary, flex: 1 },
   ingredientMeasure:     { ...Typography.bodySmall, color: Colors.textSecondary },
-  stepRow:       { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
-  stepNumber:    { width: 28, height: 28, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  stepNumberText:{ ...Typography.label, color: Colors.accent, fontWeight: '500' },
-  stepText:      { ...Typography.body, color: Colors.textPrimary, flex: 1, lineHeight: 22 },
-  emptyNote:     { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.xl },
-  fab:           { position: 'absolute', bottom: 90, right: Spacing.lg, width: 52, height: 52, borderRadius: Radius.full, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center', shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6 },
-  fabIcon:       { color: Colors.background, fontSize: 24, fontWeight: '300', lineHeight: 28 },
-  ctaWrapper:    { position: 'absolute', bottom: Spacing.lg, left: Spacing.lg, right: Spacing.lg },
-  ctaButton:     { backgroundColor: Colors.accent, paddingVertical: 16, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
-  ctaLabel:      { ...Typography.body, color: Colors.background, fontWeight: '600', letterSpacing: 0.5 },
+  stepRow:               { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
+  stepNumber:            { width: 28, height: 28, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  stepNumberText:        { ...Typography.label, color: Colors.accent, fontWeight: '500' },
+  stepText:              { ...Typography.body, color: Colors.textPrimary, flex: 1, lineHeight: 22 },
+  emptyNote:             { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', paddingVertical: Spacing.xl },
+
+  // ── FAB ───────────────────────────────────────────────────────────
+  fab: {
+    position: 'absolute', bottom: 90, right: Spacing.lg,
+    width: 52, height: 52, borderRadius: Radius.full,
+    backgroundColor: Colors.accent,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 8, elevation: 6,
+  },
+  fabIcon: { color: Colors.background, fontSize: 24, fontWeight: '300', lineHeight: 28 },
+
+  // ── CTA ───────────────────────────────────────────────────────────
+  ctaWrapper: { position: 'absolute', bottom: Spacing.lg, left: Spacing.lg, right: Spacing.lg },
+  ctaButton:  { backgroundColor: Colors.accent, paddingVertical: 16, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  ctaLabel:   { ...Typography.body, color: Colors.background, fontWeight: '600', letterSpacing: 0.5 },
 });
