@@ -27,7 +27,8 @@ async function readCache(key) {
   // Cache temporarily disabled — Firestore entries from failed writes were
   // storing corrupt data causing JSON.parse crashes (SyntaxError: Unexpected
   // end of JSON input). Re-enable once cache write is validated. (SCRUM-196)
-  return null;
+  return null; // SCRUM-196: cache disabled — re-enable once Firestore writes validated
+  // eslint-disable-next-line no-unreachable
   try {
     const db = getDb();
     if (!db) return null;

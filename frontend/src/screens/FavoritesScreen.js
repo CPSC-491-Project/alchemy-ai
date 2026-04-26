@@ -27,6 +27,8 @@ const COLORS = {
   card:          'rgba(255,255,255,0.04)',
   gold:          '#C9A84C',
   goldBorder:    'rgba(201,168,76,0.25)',
+  tagBg:         'rgba(201,168,76,0.12)',
+  heartBg:       'rgba(0,0,0,0.45)',
   textPrimary:   '#F5F5F5',
   textMuted:     '#7A7870',
   textFaint:     '#5A5855',
@@ -103,7 +105,7 @@ function FavoriteCard({ item, onPress, onUnfavorite, fontLoaded }) {
         {item.image ? (
           <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
-          <Text style={[styles.cardInitials, fontLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+          <Text style={[styles.cardInitials, fontLoaded && styles.fontCormorant]}>
             {initials}
           </Text>
         )}
@@ -111,7 +113,7 @@ function FavoriteCard({ item, onPress, onUnfavorite, fontLoaded }) {
 
       {/* Name */}
       <Text
-        style={[styles.cardName, fontLoaded && { fontFamily: 'DMSans_500Medium' }]}
+        style={[styles.cardName, fontLoaded && styles.fontDMSansMed]}
         numberOfLines={1}
       >
         {item.name}
@@ -122,7 +124,7 @@ function FavoriteCard({ item, onPress, onUnfavorite, fontLoaded }) {
         <View style={styles.tagRow}>
           {item.tags.slice(0, 2).map((tag) => (
             <View key={tag} style={styles.tag}>
-              <Text style={[styles.tagText, fontLoaded && { fontFamily: 'DMSans_400Regular' }]}>
+              <Text style={[styles.tagText, fontLoaded && styles.fontDMSansReg]}>
                 {tag}
               </Text>
             </View>
@@ -174,20 +176,20 @@ export default function FavoritesScreen({ navigation }) {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, fontsLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+          <Text style={[styles.headerTitle, fontsLoaded && styles.fontCormorant]}>
             Favorites
           </Text>
         </View>
         <View style={styles.emptyState}>
           <Ionicons name="heart-outline" size={64} color={COLORS.goldBorder} />
-          <Text style={[styles.emptyTitle, fontsLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+          <Text style={[styles.emptyTitle, fontsLoaded && styles.fontCormorant]}>
             No favorites yet
           </Text>
-          <Text style={[styles.emptySubtitle, fontsLoaded && { fontFamily: 'DMSans_400Regular' }]}>
-            Save cocktails you love and they'll appear here.
+          <Text style={[styles.emptySubtitle, fontsLoaded && styles.fontDMSansReg]}>
+            Save cocktails you love and they&apos;ll appear here.
           </Text>
           <TouchableOpacity style={styles.exploreBtn} onPress={handleExplore} activeOpacity={0.8}>
-            <Text style={[styles.exploreBtnText, fontsLoaded && { fontFamily: 'DMSans_500Medium' }]}>
+            <Text style={[styles.exploreBtnText, fontsLoaded && styles.fontDMSansMed]}>
               Explore Cocktails
             </Text>
           </TouchableOpacity>
@@ -202,10 +204,10 @@ export default function FavoritesScreen({ navigation }) {
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
 
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, fontsLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+        <Text style={[styles.headerTitle, fontsLoaded && styles.fontCormorant]}>
           Favorites
         </Text>
-        <Text style={[styles.headerCount, fontsLoaded && { fontFamily: 'DMSans_400Regular' }]}>
+        <Text style={[styles.headerCount, fontsLoaded && styles.fontDMSansReg]}>
           {favorites.length} saved
         </Text>
       </View>
@@ -303,7 +305,7 @@ const styles = StyleSheet.create({
     gap:              4,
   },
   tag: {
-    backgroundColor: 'rgba(201,168,76,0.12)',
+    backgroundColor: COLORS.tagBg,
     borderRadius:    20,
     paddingHorizontal: 8,
     paddingVertical:   3,
@@ -316,7 +318,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top:       8,
     right:     8,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: COLORS.heartBg,
     borderRadius:    20,
     padding:         6,
   },
@@ -349,6 +351,10 @@ const styles = StyleSheet.create({
   },
   exploreBtnText: {
     fontSize: 14,
-    color:    '#0D0D0D',
+    color:    COLORS.background,
   },
+  // Font styles — applied conditionally via fontsLoaded to avoid blank screen
+  fontCormorant:  { fontFamily: 'CormorantGaramond_300Light' },
+  fontDMSansReg:  { fontFamily: 'DMSans_400Regular' },
+  fontDMSansMed:  { fontFamily: 'DMSans_500Medium' },
 });
