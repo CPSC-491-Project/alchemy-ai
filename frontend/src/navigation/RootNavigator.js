@@ -14,16 +14,9 @@ import LoginScreen          from '../screens/LoginScreen';
 import TabNavigator         from './TabNavigator';
 import CocktailDetailScreen from '../screens/CocktailDetailScreen';
 
-// RecipeDetailScreen, CabinetScreen, and ScanScreen imported lazily to avoid
-// breaking builds when those branches have not yet been merged into develop.
-// Remove the try/catch wrappers once SCRUM-126, ingredient-cabinet-ui, and
-// SCRUM-151 are merged.
-let RecipeDetailScreen = null;
-let CabinetScreen = null;
-let ScanScreen = null;
-try { RecipeDetailScreen = require('../screens/RecipeDetailScreen').default; } catch (_e) { RecipeDetailScreen = null; }
-try { CabinetScreen = require('../screens/CabinetScreen').default; } catch (_e) { CabinetScreen = null; }
-try { ScanScreen = require('../screens/ScanScreen').default; } catch (_e) { ScanScreen = null; }
+import RecipeDetailScreen from '../screens/RecipeDetailScreen';
+import CabinetScreen from '../screens/CabinetScreen';
+import ScanScreen from '../screens/ScanScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -41,13 +34,11 @@ export default function RootNavigator({ user }) {
           component={CocktailDetailScreen}
           options={{ animation: 'slide_from_right' }}
         />
-        {RecipeDetailScreen && (
-          <Stack.Screen
-            name="RecipeDetail"
-            component={RecipeDetailScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-        )}
+        <Stack.Screen
+          name="RecipeDetail"
+          component={RecipeDetailScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
         {CabinetScreen && (
           <Stack.Screen
             name="IngredientCabinet"
