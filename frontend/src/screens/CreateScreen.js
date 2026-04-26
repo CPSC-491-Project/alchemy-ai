@@ -4,6 +4,8 @@
 // Design tokens from src/theme/index.js
 
 import React, { useState, useRef, useCallback } from 'react';
+import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
+import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import {
   View,
   Text,
@@ -116,6 +118,12 @@ const CocktailCard = ({ item }) => (
 
 // ── Main Screen ─────────────────────────────────────────────────────────────
 export default function CreateScreen({ navigation }) {
+  const [fontsLoaded] = useFonts({
+    CormorantGaramond_300Light,
+    DMSans_400Regular,
+    DMSans_500Medium,
+  });
+
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeStyle, setActiveStyle] = useState('Strong');
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -144,6 +152,9 @@ export default function CreateScreen({ navigation }) {
   );
 
   const currentCocktail = PARTY_COCKTAILS[activeIndex];
+
+  // Font guard — must render null until fonts load or web shows blank screen
+  if (!fontsLoaded) return null;
 
   return (
     <View style={styles.container}>
@@ -207,7 +218,7 @@ export default function CreateScreen({ navigation }) {
           style={styles.scanButton}
           activeOpacity={0.85}
           accessibilityLabel="Scan ingredient with camera"
-          onPress={() => navigation?.navigate('Scan')}
+          onPress={() => (navigation.getParent() ?? navigation).navigate('Scan')}
         >
           <Ionicons
             name="camera-outline"
@@ -223,7 +234,7 @@ export default function CreateScreen({ navigation }) {
           activeOpacity={0.85}
           accessibilityLabel="Make this cocktail"
           onPress={() =>
-            navigation?.navigate('RecipeDetail', { cocktail: currentCocktail })
+            (navigation.getParent() ?? navigation).navigate('RecipeDetail', { cocktail: currentCocktail })
           }
         >
           <LinearGradient
