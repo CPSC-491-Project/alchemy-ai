@@ -2,6 +2,12 @@
 // SCRUM-130 + SCRUM-172: live debounced search + ingredient filter chips
 // UI UPGRADE (Allisa): hi-fi wireframe — gold search bar, styled chips, cocktail cards
 // All design tokens from src/theme/index.js
+//
+// SCRUM-197 FIX (Allisa Warren):
+// Added useFonts — CormorantGaramond_300Light + DMSans_400Regular + DMSans_500Medium.
+// The headerTitle style uses fontFamily: 'CormorantGaramond_300Light' directly.
+// Without useFonts this caused a silent blank screen on web.
+// Font guard added after all hooks (same pattern as CabinetScreen / ProfileScreen).
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -16,29 +22,43 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+// FIX: useFonts — MUST be imported and called or Cormorant/DMSans silently
+// fail on Expo web, producing a blank screen with no console error visible
+// to the user.
+import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
+import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
+
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import CocktailCard from '../components/CocktailCard';
 import { searchCocktails, filterByIngredient } from '../services/cocktailService';
 
 const INGREDIENTS = [
   'Whiskey', 'Gin', 'Citrus', 'Vermouth', 'Mezcal',
-  'Rum', 'Tequila', 'Bourbon', 'Vodka', 'Bitters',
-  'Lime', 'Mint',
+  'Rum', 'Tequila', 'Bourbon', 'Vodka', 'Bitters', 'Lime', 'Mint',
 ];
 
 const DEBOUNCE_MS = 400;
 
 export default function SearchScreen({ navigation }) {
-  const [query, setQuery] = useState('');
-  const [activeIngredient, setActiveIngredient] = useState(null);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [searched, setSearched] = useState(false);
-  const debounceTimer = useRef(null);
-  const inputRef = useRef(null);
+  // FIX: useFonts — declared FIRST before any other hooks.
+  // Font guard (return null) is placed after all hooks below.
+  const [fontsLoaded] = useFonts({
+    CormorantGaramond_300Light,
+    DMSans_400Regular,
+    DMSans_500Medium,
+  });
 
-  // ── Debounced text search ─────────────────────────────────────────────────
+  const [query, setQuery]                   = useState('');
+  const [activeIngredient, setActiveIngredient] = useState(null);
+  const [results, setResults]               = useState([]);
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState(null);
+  const [searched, setSearched]             = useState(false);
+  const debounceTimer                       = useRef(null);
+  const inputRef                            = useRef(null);
+
+  // ── Debounced text search ───────────────────────────────────────────────
   const runSearch = useCallback(async (q) => {
     if (!q.trim()) {
       setResults([]);
@@ -65,7 +85,7 @@ export default function SearchScreen({ navigation }) {
     return () => clearTimeout(debounceTimer.current);
   }, [query, activeIngredient, runSearch]);
 
-  // ── Ingredient chip filter ────────────────────────────────────────────────
+  // ── Ingredient chip filter ──────────────────────────────────────────────
   const handleIngredientTap = async (name) => {
     if (activeIngredient === name) {
       setActiveIngredient(null);
@@ -101,7 +121,7 @@ export default function SearchScreen({ navigation }) {
     navigation.navigate('CocktailDetail', { id: item.id, name: item.name });
   };
 
-  // ── Render helpers ────────────────────────────────────────────────────────
+  // ── Render helpers ──────────────────────────────────────────────────────
   const renderCard = ({ item }) => (
     <CocktailCard
       drinkName={item.name}
@@ -126,6 +146,9 @@ export default function SearchScreen({ navigation }) {
         <Text style={styles.emptySubtext}>Try a different ingredient or name</Text>
       </View>
     ) : null;
+
+  // FIX: Font guard — must be AFTER all hooks, BEFORE any JSX return
+  if (!fontsLoaded) return null;
 
   return (
     <View style={styles.container}>
@@ -211,11 +234,7 @@ export default function SearchScreen({ navigation }) {
 
       {/* ── Loading ── */}
       {loading && (
-        <ActivityIndicator
-          color={Colors.accent}
-          size="small"
-          style={styles.loader}
-        />
+        <ActivityIndicator color={Colors.accent} size="small" style={styles.loader} />
       )}
 
       {/* ── Error ── */}
@@ -309,9 +328,7 @@ const styles = StyleSheet.create({
   },
 
   // Ingredient chips
-  chipsWrapper: {
-    marginBottom: Spacing.sm,
-  },
+  chipsWrapper: { marginBottom: Spacing.sm },
   chipsContent: {
     paddingHorizontal: Spacing.lg,
     gap: Spacing.xs,
@@ -333,9 +350,7 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.textSecondary,
   },
-  chipTextActive: {
-    color: Colors.accent,
-  },
+  chipTextActive: { color: Colors.accent },
 
   // Active banner
   activeBanner: {
@@ -359,15 +374,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.sm,
   },
-  card: {
-    width: '48%',
-  },
-  listContent: {
-    paddingBottom: Spacing.xxl,
-  },
-  loader: {
-    marginTop: Spacing.lg,
-  },
+  card: { width: '48%' },
+  listContent: { paddingBottom: Spacing.xxl },
+  loader:    { marginTop: Spacing.lg },
   errorText: {
     ...Typography.bodySmall,
     color: Colors.error,
