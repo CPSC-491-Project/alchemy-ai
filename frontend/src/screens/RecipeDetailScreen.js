@@ -10,7 +10,7 @@ import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormora
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  SafeAreaView, StatusBar,
+  SafeAreaView, StatusBar, Image, Alert,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 
@@ -97,6 +97,7 @@ export default function RecipeDetailScreen({ navigation, route }) {
           measure: '',
         })),
     steps: raw.steps ?? [],
+    image: raw.image ?? null,
   };
 
   const [activeTab, setActiveTab] = useState('Ingredients');
@@ -123,8 +124,15 @@ export default function RecipeDetailScreen({ navigation, route }) {
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
 
-          {/* Hero image placeholder — swap View for <Image> once wired */}
-          <View style={styles.heroImage} />
+          {cocktail.image ? (
+            <Image
+              source={{ uri: cocktail.image }}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.heroImage} />
+          )}
 
           {/* Fade overlay at bottom of hero */}
           <View style={styles.heroFade} />
@@ -203,7 +211,16 @@ export default function RecipeDetailScreen({ navigation, route }) {
 
       {/* ── Add All to Cabinet CTA ───────────────────────────── */}
       <View style={styles.ctaWrapper}>
-        <TouchableOpacity style={styles.ctaButton} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.ctaButton}
+          activeOpacity={0.85}
+          onPress={() => {
+            const names = cocktail.ingredients.map(i => i.name).join(', ');
+            if (typeof window !== 'undefined') {
+              window.alert('Added to Cabinet\n' + names);
+            }
+          }}
+        >
           <Text style={styles.ctaLabel}>Add All to Cabinet</Text>
         </TouchableOpacity>
       </View>
