@@ -4,8 +4,10 @@
 // Exposes one async function consumed by ScanScreen.js:
 //   scanImage(base64) → { rawOcrText, candidates, mode }
 //
-// Auth: retrieves Firebase ID token and attaches as Bearer header.
-// Follows the same pattern as cabinetService.js (SCRUM-147).
+// Auth: attaches Firebase ID token as Bearer header IF a user is signed in.
+// Scan is available to guests — backend treats /api/scan as a public route
+// (SCRUM-196). Token is still passed when available so future server-side
+// logic (rate limits per user, scan history) has the option to use it.
 //
 // Network considerations:
 //   - POST body can be several megabytes (base64 JPEG). Backend accepts
@@ -65,13 +67,11 @@ export async function scanImage(imageBase64) {
   }
 
   const token = await getAuthToken();
-  if (!token) {
-    throw new Error('You need to be signed in to scan ingredients.');
-  }
 
   // eslint-disable-next-line no-console
   console.log('[scanService] Scanning image', {
     bytes: imageBase64.length,
+    authed: Boolean(token),
   });
 
   let res;
@@ -80,7 +80,7 @@ export async function scanImage(imageBase64) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ imageBase64 }),
     });
