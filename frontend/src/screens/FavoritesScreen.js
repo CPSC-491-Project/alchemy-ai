@@ -1,213 +1,354 @@
-// frontend/src/screens/FavoritesScreen.js
-// SCRUM-174 — Favorites screen UI
-// SCRUM-122 — High-fidelity UI screens
-// Assigned to: Allisa Warren
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
   SafeAreaView,
-  ActivityIndicator,
+  StatusBar,
+  Dimensions,
+  Image,
 } from 'react-native';
-import { Colors, Typography, Spacing, Radius } from '../theme/index';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  useFonts,
+  CormorantGaramond_300Light,
+} from '@expo-google-fonts/cormorant-garamond';
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+} from '@expo-google-fonts/dm-sans';
 
-function FavoriteCard({ item, onPress, onUnfavorite }) {
+// ─── Design tokens (mirrors theme/index.js) ───────────────────────────────────
+const COLORS = {
+  background:    '#0D0D0D',
+  surface:       '#1A1A1A',
+  card:          'rgba(255,255,255,0.04)',
+  gold:          '#C9A84C',
+  goldBorder:    'rgba(201,168,76,0.25)',
+  textPrimary:   '#F5F5F5',
+  textMuted:     '#7A7870',
+  textFaint:     '#5A5855',
+};
+
+const { width } = Dimensions.get('window');
+const CARD_GAP   = 12;
+const CARD_WIDTH = (width - 32 - CARD_GAP) / 2;   // 2-column grid, 16px side padding
+
+// ─── Mock favorites (same shape as CreateScreen cocktails) ────────────────────
+// Real TheCocktailDB IDs so CocktailDetailScreen can fetch them via GET /api/recipes/:id
+const MOCK_FAVORITES = [
+  {
+    id:          '11001',
+    name:        'Old Fashioned',
+    ingredients: ['Bourbon Whiskey', 'Simple Syrup', 'Angostura Bitters', 'Orange Peel'],
+    tags:        ['Classic', 'Stirred'],
+    image:       null,
+  },
+  {
+    id:          '11003',
+    name:        'Negroni',
+    ingredients: ['Gin', 'Sweet Vermouth', 'Campari'],
+    tags:        ['Bitter', 'Stirred'],
+    image:       null,
+  },
+  {
+    id:          '11007',
+    name:        'Margarita',
+    ingredients: ['Tequila', 'Triple Sec', 'Lime Juice', 'Salt'],
+    tags:        ['Citrus', 'Shaken'],
+    image:       null,
+  },
+  {
+    id:          '11000',
+    name:        'Mojito',
+    ingredients: ['White Rum', 'Mint', 'Lime Juice', 'Simple Syrup', 'Soda Water'],
+    tags:        ['Fresh', 'Shaken'],
+    image:       null,
+  },
+  {
+    id:          '11012',
+    name:        'Whiskey Sour',
+    ingredients: ['Bourbon', 'Lemon Juice', 'Simple Syrup', 'Egg White'],
+    tags:        ['Classic', 'Shaken'],
+    image:       null,
+  },
+  {
+    id:          '17222',
+    name:        'Dark & Stormy',
+    ingredients: ['Dark Rum', 'Ginger Beer', 'Lime Juice'],
+    tags:        ['Strong', 'Build'],
+    image:       null,
+  },
+];
+
+// ─── Single cocktail card ─────────────────────────────────────────────────────
+function FavoriteCard({ item, onPress, onUnfavorite, fontLoaded }) {
+  const initials = item.name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => onPress(item)}
-      activeOpacity={0.8}
+      onPress={onPress}
+      activeOpacity={0.75}
     >
-      <View style={styles.cardImageWrapper}>
-        {item.thumbnail ? (
-          <Image
-            source={{ uri: item.thumbnail }}
-            style={styles.cardImage}
-            resizeMode="cover"
-          />
+      {/* Thumbnail / placeholder */}
+      <View style={styles.cardImage}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         ) : (
-          <View style={styles.cardImagePlaceholder}>
-            <Text style={styles.cardPlaceholderText}>🍸</Text>
-          </View>
-        )}
-        <TouchableOpacity
-          style={styles.heartButton}
-          onPress={() => onUnfavorite(item)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.heartIcon}>♥</Text>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.cardInfo}>
-        <Text style={styles.cardName} numberOfLines={1}>
-          {item.name}
-        </Text>
-        {item.category ? (
-          <Text style={styles.cardMeta} numberOfLines={1}>
-            {item.category}
+          <Text style={[styles.cardInitials, fontLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+            {initials}
           </Text>
-        ) : null}
+        )}
       </View>
+
+      {/* Name */}
+      <Text
+        style={[styles.cardName, fontLoaded && { fontFamily: 'DMSans_500Medium' }]}
+        numberOfLines={1}
+      >
+        {item.name}
+      </Text>
+
+      {/* Tag row */}
+      {item.tags && item.tags.length > 0 && (
+        <View style={styles.tagRow}>
+          {item.tags.slice(0, 2).map((tag) => (
+            <View key={tag} style={styles.tag}>
+              <Text style={[styles.tagText, fontLoaded && { fontFamily: 'DMSans_400Regular' }]}>
+                {tag}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Unfavorite heart button */}
+      <TouchableOpacity
+        style={styles.heartBtn}
+        onPress={onUnfavorite}
+        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+      >
+        <Ionicons name="heart" size={18} color={COLORS.gold} />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
 
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function FavoritesScreen({ navigation }) {
-  const [favorites, setFavorites] = useState([]);
-  const [loading, setLoading] = useState(false);
+  // Load fonts — missing useFonts causes silent blank screen on web
+  const [fontsLoaded] = useFonts({
+    CormorantGaramond_300Light,
+    DMSans_400Regular,
+    DMSans_500Medium,
+  });
 
-  useEffect(() => {
-    setLoading(false);
+  const [favorites, setFavorites] = useState(MOCK_FAVORITES);
+
+  // Optimistic local remove — replace with API call when backend is ready
+  const handleUnfavorite = useCallback((id) => {
+    setFavorites((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  const handleCardPress = (item) => {
-    if (navigation) {
-      navigation.navigate('CocktailDetail', { cocktailId: item.id, cocktail: item });
-    }
-  };
+  // Tab screens need getParent() to reach root stack screens like CocktailDetail
+  const handleCardPress = useCallback((item) => {
+    (navigation.getParent() ?? navigation).navigate('CocktailDetail', { id: item.id, cocktail: item });
+  }, [navigation]);
 
-  const handleUnfavorite = (item) => {
-    setFavorites((prev) => prev.filter((f) => f.id !== item.id));
-  };
+  // "Explore Cocktails" — Search is a tab, direct navigate works fine
+  const handleExplore = useCallback(() => {
+    navigation.navigate('Search');
+  }, [navigation]);
 
-  const handleExplore = () => {
-    if (navigation) {
-      navigation.navigate('Search');
-    }
-  };
-
-  if (loading) {
+  // ── Empty state ──
+  if (favorites.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator color={Colors.accent} size="large" />
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, fontsLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+            Favorites
+          </Text>
+        </View>
+        <View style={styles.emptyState}>
+          <Ionicons name="heart-outline" size={64} color={COLORS.goldBorder} />
+          <Text style={[styles.emptyTitle, fontsLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+            No favorites yet
+          </Text>
+          <Text style={[styles.emptySubtitle, fontsLoaded && { fontFamily: 'DMSans_400Regular' }]}>
+            Save cocktails you love and they'll appear here.
+          </Text>
+          <TouchableOpacity style={styles.exploreBtn} onPress={handleExplore} activeOpacity={0.8}>
+            <Text style={[styles.exploreBtnText, fontsLoaded && { fontFamily: 'DMSans_500Medium' }]}>
+              Explore Cocktails
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
+  // ── Grid of favorites ──
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Favorites</Text>
-        {favorites.length > 0 && (
-          <Text style={styles.headerCount}>{favorites.length}</Text>
-        )}
+        <Text style={[styles.headerTitle, fontsLoaded && { fontFamily: 'CormorantGaramond_300Light' }]}>
+          Favorites
+        </Text>
+        <Text style={[styles.headerCount, fontsLoaded && { fontFamily: 'DMSans_400Regular' }]}>
+          {favorites.length} saved
+        </Text>
       </View>
 
-      {favorites.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>♡</Text>
-          <Text style={styles.emptyHeading}>No favorites yet</Text>
-          <Text style={styles.emptySubtext}>
-            Recipes you love will appear here. Start exploring to find your next favorite cocktail.
-          </Text>
-          <TouchableOpacity style={styles.exploreButton} onPress={handleExplore}>
-            <Text style={styles.exploreButtonText}>Explore Cocktails</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={favorites}
-          keyExtractor={(item) => String(item.id)}
-          numColumns={2}
-          columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <FavoriteCard
-              item={item}
-              onPress={handleCardPress}
-              onUnfavorite={handleUnfavorite}
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      <FlatList
+        data={favorites}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.row}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => (
+          <FavoriteCard
+            item={item}
+            fontLoaded={fontsLoaded}
+            onPress={() => handleCardPress(item)}
+            onUnfavorite={() => handleUnfavorite(item.id)}
+          />
+        )}
+      />
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: {
+    flex:            1,
+    backgroundColor: COLORS.background,
+  },
+
+  // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingHorizontal: 16,
+    paddingTop:        20,
+    paddingBottom:     12,
+    flexDirection:     'row',
+    alignItems:        'flex-end',
+    justifyContent:    'space-between',
   },
-  headerTitle: { ...Typography.headingS, color: Colors.textPrimary, flex: 1 },
-  headerCount: { ...Typography.bodySmall, color: Colors.textSecondary },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
-  row: { justifyContent: 'space-between', marginBottom: Spacing.md },
+  headerTitle: {
+    fontSize:  32,
+    color:     COLORS.textPrimary,
+    fontWeight: '300',
+  },
+  headerCount: {
+    fontSize:   13,
+    color:      COLORS.textMuted,
+    paddingBottom: 4,
+  },
+
+  // Grid
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom:     32,
+  },
+  row: {
+    justifyContent: 'space-between',
+    marginBottom:   CARD_GAP,
+  },
+
+  // Card
   card: {
-    width: '48.5%',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    width:           CARD_WIDTH,
+    backgroundColor: COLORS.card,
+    borderRadius:    20,
+    borderWidth:     1,
+    borderColor:     COLORS.goldBorder,
+    overflow:        'hidden',
+    paddingBottom:   12,
   },
-  cardImageWrapper: { width: '100%', aspectRatio: 1 },
-  cardImage: { width: '100%', height: '100%' },
-  cardImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: Colors.surfaceRaised,
-    justifyContent: 'center',
-    alignItems: 'center',
+  cardImage: {
+    width:           '100%',
+    height:          CARD_WIDTH * 0.85,
+    backgroundColor: COLORS.surface,
+    alignItems:      'center',
+    justifyContent:  'center',
   },
-  cardPlaceholderText: { fontSize: 36 },
-  heartButton: {
+  cardInitials: {
+    fontSize:  36,
+    color:     COLORS.gold,
+    opacity:   0.7,
+  },
+  cardName: {
+    fontSize:         14,
+    color:            COLORS.textPrimary,
+    marginHorizontal: 10,
+    marginTop:        10,
+    marginBottom:     6,
+  },
+  tagRow: {
+    flexDirection:    'row',
+    flexWrap:         'wrap',
+    marginHorizontal: 10,
+    gap:              4,
+  },
+  tag: {
+    backgroundColor: 'rgba(201,168,76,0.12)',
+    borderRadius:    20,
+    paddingHorizontal: 8,
+    paddingVertical:   3,
+  },
+  tagText: {
+    fontSize: 10,
+    color:    COLORS.gold,
+  },
+  heartBtn: {
     position: 'absolute',
-    top: Spacing.sm,
-    right: Spacing.sm,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: Radius.full,
-    width: 30,
-    height: 30,
+    top:       8,
+    right:     8,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius:    20,
+    padding:         6,
+  },
+
+  // Empty state
+  emptyState: {
+    flex:           1,
+    alignItems:     'center',
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 40,
+    gap:            16,
   },
-  heartIcon: { color: Colors.accent, fontSize: 14 },
-  cardInfo: { padding: Spacing.sm },
-  cardName: { ...Typography.cardTitleS, color: Colors.textPrimary },
-  cardMeta: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-  },
-  emptyIcon: { fontSize: 48, color: Colors.textSecondary, marginBottom: Spacing.lg },
-  emptyHeading: {
-    ...Typography.headingXS,
-    color: Colors.textPrimary,
+  emptyTitle: {
+    fontSize:  28,
+    color:     COLORS.textPrimary,
     textAlign: 'center',
-    marginBottom: Spacing.sm,
   },
-  emptySubtext: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: Spacing.xl,
+  emptySubtitle: {
+    fontSize:   14,
+    color:      COLORS.textMuted,
+    textAlign:  'center',
     lineHeight: 22,
   },
-  exploreButton: {
-    backgroundColor: Colors.accent,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: Radius.pill,
+  exploreBtn: {
+    marginTop:       8,
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 28,
+    paddingVertical:   13,
+    borderRadius:    30,
   },
-  exploreButtonText: {
-    ...Typography.button,
-    color: Colors.background,
-    fontWeight: '600',
+  exploreBtnText: {
+    fontSize: 14,
+    color:    '#0D0D0D',
   },
 });
