@@ -1,12 +1,16 @@
-// SCRUM-187: /api/scan route.
+// SCRUM-187 / SCRUM-196: /api/scan route.
 //
-// Authenticated endpoint that accepts a base64-encoded image, runs it
-// through Google Cloud Vision TEXT_DETECTION, matches extracted text
-// against the CocktailDB ingredient vocabulary, and returns ranked
-// candidates for the client to confirm (SCRUM-189).
+// Public endpoint that accepts a base64-encoded image, runs it through
+// Google Cloud Vision TEXT_DETECTION, matches extracted text against
+// the CocktailDB ingredient vocabulary, and returns ranked candidates
+// for the client to confirm (SCRUM-189).
+//
+// Auth: NONE. Scan is intentionally available to guests (SCRUM-196) so
+// users can try the feature without signing in. If the client sends an
+// Authorization header it is currently ignored — re-add verifyToken if
+// per-user rate limiting or scan history is added later.
 //
 // Request:  POST /api/scan
-//   Headers:  Authorization: Bearer <Firebase ID token>
 //   Body:     { imageBase64: string }          // raw base64, no data: URI
 //
 // Response (200):
@@ -19,21 +23,18 @@
 //   }
 //
 // Error responses:
-//   401 — no Authorization header
-//   403 — invalid / expired token
 //   400 — missing or malformed imageBase64
 //   500 — GCV or matcher pipeline failure
 
 const express = require('express');
 const router = express.Router();
 
-const verifyToken = require('../middleware/verifyToken');
 const visionService = require('../services/visionService');
 const { matchIngredients } = require('../services/ingredientMatcher');
 const { getVocabulary } = require('../services/cocktailDbVocabulary');
 
 // POST / — scan an image and return matched ingredient candidates.
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', async (req, res) => {
   const { imageBase64 } = req.body || {};
 
   if (!imageBase64 || typeof imageBase64 !== 'string') {

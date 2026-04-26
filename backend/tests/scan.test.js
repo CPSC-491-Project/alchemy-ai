@@ -19,36 +19,59 @@ const request = require('supertest');
 // seconds to reject. Give the test suite enough headroom to not timeout.
 jest.setTimeout(15000);
 
-describe('Scan route — auth guards', () => {
+describe('Scan route — public endpoint (SCRUM-196)', () => {
   let app;
 
   beforeAll(() => {
     delete process.env.GCV_CREDENTIALS_BASE64;
     delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
     process.env.SCAN_DISABLE_FIRESTORE_CACHE = 'true';
+
+    // Stub the CocktailDB fetch so the vocabulary service doesn't try
+    // to reach the network during the no-auth smoke test below.
     jest.resetModules();
+    jest.doMock('../services/cocktailDbVocabulary', () => {
+      // eslint-disable-next-line global-require
+      const { INGREDIENTS } = require('../data/ingredientVocabulary');
+      return {
+        getVocabulary: async () => INGREDIENTS,
+        _resetMemo: () => {},
+      };
+    });
+
     // eslint-disable-next-line global-require
     app = require('../app');
   });
 
-  test('POST /api/scan with no token returns 401', async () => {
-    const res = await request(app).post('/api/scan').send({ imageBase64: 'x' });
-    expect(res.statusCode).toBe(401);
+  afterAll(() => {
+    jest.dontMock('../services/cocktailDbVocabulary');
+    jest.resetModules();
   });
 
-  test('POST /api/scan with malformed token returns 403', async () => {
+  test('POST /api/scan with no Authorization header is NOT rejected with 401/403', async () => {
+    // Use a too-short imageBase64 so we get a deterministic 400 instead
+    // of triggering the full pipeline. The point is: the request is no
+    // longer blocked by auth.
+    const res = await request(app).post('/api/scan').send({ imageBase64: 'x' });
+    expect(res.statusCode).not.toBe(401);
+    expect(res.statusCode).not.toBe(403);
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('POST /api/scan ignores Authorization header (does not reject malformed tokens)', async () => {
     const res = await request(app)
       .post('/api/scan')
       .set('Authorization', 'Bearer not-a-real-token')
       .send({ imageBase64: 'x' });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).not.toBe(401);
+    expect(res.statusCode).not.toBe(403);
+    expect(res.statusCode).toBe(400);
   });
 });
 
 // ──────────────────────────────────────────────────────────────────────────
-// The rest of the tests exercise the route WITHOUT going through the real
-// Firebase auth middleware. We stub verifyToken to attach a fake user and
-// continue, then re-require app.js so the stub takes effect.
+// The rest of the tests exercise the route's mock-mode happy path. Since
+// SCRUM-196 made /api/scan public, no auth stubbing is needed.
 // ──────────────────────────────────────────────────────────────────────────
 
 describe('Scan route — mock mode happy path', () => {
@@ -63,12 +86,6 @@ describe('Scan route — mock mode happy path', () => {
 
     // Force the fresh require paths — clear cache first so our stub gets picked up.
     jest.resetModules();
-
-    // Stub verifyToken so we don't need a real Firebase token.
-    jest.doMock('../middleware/verifyToken', () => (req, _res, next) => {
-      req.user = { uid: 'test-user-uid' };
-      next();
-    });
 
     // Stub the live CocktailDB fetch so the vocabulary service falls back
     // to the static list without any network attempt. (Tests on machines
@@ -91,7 +108,6 @@ describe('Scan route — mock mode happy path', () => {
   });
 
   afterAll(() => {
-    jest.dontMock('../middleware/verifyToken');
     jest.dontMock('../services/cocktailDbVocabulary');
     jest.resetModules();
   });
