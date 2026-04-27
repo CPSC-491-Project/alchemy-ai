@@ -123,14 +123,22 @@ export default function LoginScreen({ navigation }) {
   }, [response]);
 
   // ── Auth handlers ─────────────────────────────────────────────────────────
+  // SCRUM-192: handleAuthSuccess now navigates to MainTabs even if /api/me
+  // fails (e.g. network error or first-login race condition). Profile fetch
+  // failure is logged but no longer blocks navigation after successful auth.
   const handleAuthSuccess = async (userCredential) => {
     try {
       const idToken = await userCredential.user.getIdToken();
-      const profile = await fetchUserProfile(idToken);
+      let profile = null;
+      try {
+        profile = await fetchUserProfile(idToken);
+      } catch (profileErr) {
+        console.warn('[LoginScreen] Profile fetch failed, navigating anyway:', profileErr.message);
+      }
       navigation.replace('MainTabs', { user: profile, isGuest: false });
     } catch (err) {
-      console.error('[LoginScreen] Post-auth fetch failed:', err);
-      Alert.alert('Sign-In Error', 'Authenticated but could not load profile. Try again.');
+      console.error('[LoginScreen] Post-auth error:', err);
+      Alert.alert('Sign-In Error', 'Something went wrong. Please try again.');
     }
   };
 
