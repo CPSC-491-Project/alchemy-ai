@@ -17,10 +17,15 @@ import {
   ImageBackground,
   Animated,
   Platform,
+  Modal,
+  TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
+import { addIngredient } from '../services/cabinetService';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CARD_W = SCREEN_W - Spacing.lg * 2;
@@ -129,6 +134,50 @@ export default function CreateScreen({ navigation }) {
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatRef = useRef(null);
 
+  // SCRUM-198: Manual ingredient add — mirrors the modal in CabinetScreen so
+  // users can add to their cabinet without going through the Scan flow. The
+  // form fields and CATEGORIES list match Cabinet exactly so the UX is
+  // consistent in both places, and we POST through the same cabinetService
+  // (single source of truth for the /api/cabinet contract).
+  const MANUAL_CATEGORIES = ['spirit', 'mixer', 'garnish'];
+  const MANUAL_CATEGORY_ICON = { spirit: '🥃', mixer: '🍋', garnish: '🌿' };
+  const [manualModalVisible, setManualModalVisible] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualCategory, setManualCategory] = useState('spirit');
+  const [manualQuantity, setManualQuantity] = useState('');
+  const [manualUnit, setManualUnit] = useState('');
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+
+  function openManualModal() {
+    setManualName('');
+    setManualCategory('spirit');
+    setManualQuantity('');
+    setManualUnit('');
+    setManualModalVisible(true);
+  }
+
+  async function handleManualAdd() {
+    if (!manualName.trim()) {
+      Alert.alert('Required', 'Please enter an ingredient name.');
+      return;
+    }
+    setManualSubmitting(true);
+    try {
+      await addIngredient({
+        name: manualName.trim(),
+        category: manualCategory,
+        quantity: manualQuantity.trim() || null,
+        unit: manualUnit.trim() || null,
+      });
+      setManualModalVisible(false);
+      Alert.alert('Added', `${manualName.trim()} was added to your Cabinet.`);
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not add ingredient.');
+    } finally {
+      setManualSubmitting(false);
+    }
+  }
+
   const onViewableChanged = useRef(({ viewableItems }) => {
     if (viewableItems.length > 0) {
       setActiveIndex(viewableItems[0].index ?? 0);
@@ -211,8 +260,27 @@ export default function CreateScreen({ navigation }) {
         ))}
       </View>
 
-      {/* ── CTA row: Scan Ingredient (secondary) + Make This Cocktail (primary) ── */}
+      {/* ── CTA row: Add Manually + Scan Ingredient (secondary) + Make This Cocktail (primary) ── */}
       <View style={styles.ctaRow}>
+        {/* SCRUM-198: Add Manually — opens a modal that calls the same
+            cabinetService.addIngredient as CabinetScreen, so users can add
+            without going through the camera/scan flow. */}
+        <TouchableOpacity
+          style={styles.manualButton}
+          activeOpacity={0.85}
+          accessibilityLabel="Add ingredient manually"
+          accessibilityRole="button"
+          onPress={openManualModal}
+        >
+          <Ionicons
+            name="create-outline"
+            size={18}
+            color={Colors.accent}
+            style={styles.manualIcon}
+          />
+          <Text style={styles.manualText}>Add Manually</Text>
+        </TouchableOpacity>
+
         {/* SCRUM-151: Scan Ingredient — navigates to Scan screen (camera-based ingredient input) */}
         <TouchableOpacity
           style={styles.scanButton}
@@ -274,6 +342,107 @@ export default function CreateScreen({ navigation }) {
           ))}
         </View>
       </View>
+
+      {/* ── SCRUM-198: Manual Ingredient Add Modal ──
+          Bottom-sheet form mirroring CabinetScreen's add modal so the UX
+          is consistent. Submits via cabinetService.addIngredient (same
+          backend route /api/cabinet). */}
+      <Modal
+        visible={manualModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setManualModalVisible(false)}
+      >
+        <View style={styles.manualModalOverlay}>
+          <View style={styles.manualModalSheet}>
+            <View style={styles.manualModalHandle} />
+            <Text style={styles.manualModalTitle}>Add Ingredient</Text>
+
+            <Text style={styles.manualLabel}>Name *</Text>
+            <TextInput
+              style={styles.manualInput}
+              placeholder="e.g. Rum, Lime Juice"
+              placeholderTextColor={Colors.textHint}
+              value={manualName}
+              onChangeText={setManualName}
+              autoFocus
+              accessibilityLabel="Ingredient name"
+            />
+
+            <Text style={styles.manualLabel}>Category *</Text>
+            <View style={styles.manualCategoryRow}>
+              {MANUAL_CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[
+                    styles.manualCategoryChip,
+                    manualCategory === cat && styles.manualCategoryChipActive,
+                  ]}
+                  onPress={() => setManualCategory(cat)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: manualCategory === cat }}
+                >
+                  <Text style={styles.manualCategoryChipIcon}>
+                    {MANUAL_CATEGORY_ICON[cat]}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.manualCategoryChipText,
+                      manualCategory === cat && styles.manualCategoryChipTextActive,
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.manualLabel}>Quantity (optional)</Text>
+            <TextInput
+              style={styles.manualInput}
+              placeholder="e.g. 750"
+              placeholderTextColor={Colors.textHint}
+              value={manualQuantity}
+              onChangeText={setManualQuantity}
+              keyboardType="numeric"
+              accessibilityLabel="Quantity"
+            />
+
+            <Text style={styles.manualLabel}>Unit (optional)</Text>
+            <TextInput
+              style={styles.manualInput}
+              placeholder="e.g. ml, oz, bottle"
+              placeholderTextColor={Colors.textHint}
+              value={manualUnit}
+              onChangeText={setManualUnit}
+              accessibilityLabel="Unit"
+            />
+
+            <View style={styles.manualModalActions}>
+              <TouchableOpacity
+                style={styles.manualCancelButton}
+                onPress={() => setManualModalVisible(false)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.manualCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.manualConfirmButton}
+                onPress={handleManualAdd}
+                disabled={manualSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm add ingredient"
+              >
+                {manualSubmitting ? (
+                  <ActivityIndicator size="small" color={Colors.background} />
+                ) : (
+                  <Text style={styles.manualConfirmText}>Add to Cabinet</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -462,6 +631,135 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.accent,
     letterSpacing: 0.3,
+  },
+
+  // Add Manually (secondary CTA — SCRUM-198)
+  // Mirrors scanButton's outline-pill style but with a transparent fill so it
+  // visually de-emphasises slightly relative to Scan (the more "premium" path).
+  manualButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    backgroundColor: 'transparent',
+  },
+  manualIcon: {
+    marginRight: 6,
+  },
+  manualText: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 14,
+    color: Colors.accent,
+    letterSpacing: 0.3,
+  },
+
+  // Manual Ingredient Add Modal (SCRUM-198) — copied from CabinetScreen patterns
+  manualModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  manualModalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+    borderTopWidth: 1,
+    borderColor: Colors.accent + '44',
+  },
+  manualModalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.pill,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  manualModalTitle: {
+    ...Typography.headingXS,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  manualLabel: {
+    ...Typography.label,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  manualInput: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    color: Colors.textPrimary,
+    ...Typography.bodyMedium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  manualCategoryRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  manualCategoryChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  manualCategoryChipActive: {
+    backgroundColor: Colors.accentSubtle,
+    borderColor: Colors.accent,
+  },
+  manualCategoryChipIcon: {
+    fontSize: 14,
+  },
+  manualCategoryChipText: {
+    ...Typography.labelSmall,
+    color: Colors.textMuted,
+    textTransform: 'capitalize',
+  },
+  manualCategoryChipTextActive: {
+    color: Colors.accent,
+  },
+  manualModalActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  manualCancelButton: {
+    flex: 1,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  manualCancelText: {
+    ...Typography.labelMedium,
+    color: Colors.textSecondary,
+  },
+  manualConfirmButton: {
+    flex: 2,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+  },
+  manualConfirmText: {
+    ...Typography.labelMedium,
+    color: Colors.background,
   },
 
   // CTA Button (Make This Cocktail — primary)
