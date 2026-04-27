@@ -260,8 +260,29 @@ export default function CreateScreen({ navigation }) {
         ))}
       </View>
 
-      {/* ── CTA row: Add Manually + Scan Ingredient (secondary) + Make This Cocktail (primary) ── */}
-      <View style={styles.ctaRow}>
+      {/* ── Primary CTA: Make This Cocktail ── */}
+      <View style={styles.primaryCtaRow}>
+        <TouchableOpacity
+          style={styles.ctaButton}
+          activeOpacity={0.85}
+          accessibilityLabel="Make this cocktail"
+          onPress={() =>
+            (navigation.getParent() ?? navigation).navigate('RecipeDetail', { cocktail: currentCocktail })
+          }
+        >
+          <LinearGradient
+            colors={[Colors.goldGradientStart, Colors.goldGradientEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.ctaGradient}
+          >
+            <Text style={styles.ctaText}>Make This Cocktail</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Secondary CTAs: Add Manually + Scan Ingredient ── */}
+      <View style={styles.secondaryCtaRow}>
         {/* SCRUM-198: Add Manually — opens a modal that calls the same
             cabinetService.addIngredient as CabinetScreen, so users can add
             without going through the camera/scan flow. */}
@@ -295,24 +316,6 @@ export default function CreateScreen({ navigation }) {
             style={styles.scanIcon}
           />
           <Text style={styles.scanText}>Scan Ingredient</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.ctaButton}
-          activeOpacity={0.85}
-          accessibilityLabel="Make this cocktail"
-          onPress={() =>
-            (navigation.getParent() ?? navigation).navigate('RecipeDetail', { cocktail: currentCocktail })
-          }
-        >
-          <LinearGradient
-            colors={[Colors.goldGradientStart, Colors.goldGradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaGradient}
-          >
-            <Text style={styles.ctaText}>Make This Cocktail</Text>
-          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -602,8 +605,15 @@ const styles = StyleSheet.create({
     width: 16,
   },
 
-  // CTA Row (Scan + Make This Cocktail)
-  ctaRow: {
+  // Primary CTA row (Make This Cocktail) — full-width on its own line
+  primaryCtaRow: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+
+  // Secondary CTA row (Add Manually + Scan Ingredient) — sit a few lines
+  // below the primary CTA, sharing width equally via flex:1 on each button.
+  secondaryCtaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: Spacing.lg,
@@ -613,6 +623,7 @@ const styles = StyleSheet.create({
 
   // Scan Ingredient (secondary CTA — SCRUM-151)
   scanButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -637,6 +648,7 @@ const styles = StyleSheet.create({
   // Mirrors scanButton's outline-pill style but with a transparent fill so it
   // visually de-emphasises slightly relative to Scan (the more "premium" path).
   manualButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
