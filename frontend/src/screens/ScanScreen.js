@@ -34,6 +34,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { scanImage, addConfirmedIngredients } from '../services/scanService';
+import { useMixer } from '../contexts/MixerContext';
 
 // ── States ─────────────────────────────────────────────────────────────────
 const S = {
@@ -341,6 +342,10 @@ function ReviewView({ result, onAddToCabinet, onDiscard, onBack }) {
   // The set of *selected* candidates is what gets written to the Cabinet.
   const candidates = result?.candidates || [];
 
+  // SCRUM-198: pull mixer actions from shared context so "Add to Mixer"
+  // here on Review puts items into the same Mixer Space rendered on Create.
+  const { addToMixer } = useMixer();
+
   // Initialize selection: candidates at or above PRE_CHECK_THRESHOLD start
   // checked. Keyed by index because canonical name is unique within results
   // (the matcher dedupes) but we use index for safety.
@@ -358,6 +363,15 @@ function ReviewView({ result, onAddToCabinet, onDiscard, onBack }) {
 
   const selectedCount = selected.filter(Boolean).length;
   const selectedCandidates = candidates.filter((_, i) => selected[i]);
+
+  // SCRUM-198: send all currently-selected candidates into the Mixer Space.
+  // Local-only — does not hit /api/cabinet (use "Add to Cabinet" for that).
+  const handleAddSelectedToMixer = () => {
+    selectedCandidates.forEach((c) => {
+      addToMixer({ name: c.name, category: c.category || null });
+    });
+    onDiscard(); // Reset back to capture state, like the Cabinet flow does post-write
+  };
 
   return (
     <SafeAreaView style={styles.reviewSafe}>
@@ -429,28 +443,47 @@ function ReviewView({ result, onAddToCabinet, onDiscard, onBack }) {
 
         {candidates.length > 0 && (
           <>
-            {/* Add to Cabinet — primary gold-gradient CTA */}
-            <TouchableOpacity
-              style={[
-                styles.gradientBtn,
-                selectedCount === 0 && styles.gradientBtnDisabled,
-              ]}
-              activeOpacity={0.85}
-              disabled={selectedCount === 0}
-              onPress={() => onAddToCabinet(selectedCandidates)}
-              accessibilityLabel={`Add ${selectedCount} ingredients to Cabinet`}
-            >
-              <LinearGradient
-                colors={[Colors.goldGradientStart, Colors.goldGradientEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.gradientBtnInner}
+            {/* SCRUM-198: action row — Add to Mixer (left) + Add to Cabinet (right) */}
+            <View style={styles.reviewActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.mixerActionBtn,
+                  selectedCount === 0 && styles.mixerActionBtnDisabled,
+                ]}
+                activeOpacity={0.85}
+                disabled={selectedCount === 0}
+                onPress={handleAddSelectedToMixer}
+                accessibilityLabel={`Add ${selectedCount} ingredients to Mixer Space`}
               >
-                <Text style={styles.gradientBtnText}>
-                  Add {selectedCount > 0 ? `${selectedCount} ` : ''}to Cabinet
+                <Text style={styles.mixerActionBtnText}>
+                  Add {selectedCount > 0 ? `${selectedCount} ` : ''}to Mixer
                 </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              </TouchableOpacity>
+
+              {/* Add to Cabinet — primary gold-gradient CTA */}
+              <TouchableOpacity
+                style={[
+                  styles.gradientBtn,
+                  styles.gradientBtnRowFlex,
+                  selectedCount === 0 && styles.gradientBtnDisabled,
+                ]}
+                activeOpacity={0.85}
+                disabled={selectedCount === 0}
+                onPress={() => onAddToCabinet(selectedCandidates)}
+                accessibilityLabel={`Add ${selectedCount} ingredients to Cabinet`}
+              >
+                <LinearGradient
+                  colors={[Colors.goldGradientStart, Colors.goldGradientEnd]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.gradientBtnInner}
+                >
+                  <Text style={styles.gradientBtnText}>
+                    Add {selectedCount > 0 ? `${selectedCount} ` : ''}to Cabinet
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity style={styles.secondaryBtn} onPress={onDiscard}>
               <Text style={styles.secondaryBtnText}>Discard & scan again</Text>
@@ -858,6 +891,39 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.background,
     letterSpacing: 0.5,
+  },
+
+  // SCRUM-198: Review action row — Add to Mixer (left) + Add to Cabinet (right)
+  reviewActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  // Override gradientBtn marginTop when used inside reviewActionRow
+  gradientBtnRowFlex: {
+    flex: 1.5,
+    marginTop: 0,
+  },
+  mixerActionBtn: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mixerActionBtnDisabled: {
+    opacity: 0.4,
+  },
+  mixerActionBtnText: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 14,
+    color: Colors.accent,
+    letterSpacing: 0.3,
   },
 
   // SCRUM-189: Done state

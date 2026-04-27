@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { addIngredient } from '../services/cabinetService';
+import { useMixer } from '../contexts/MixerContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CARD_W = SCREEN_W - Spacing.lg * 2;
@@ -148,12 +149,33 @@ export default function CreateScreen({ navigation }) {
   const [manualUnit, setManualUnit] = useState('');
   const [manualSubmitting, setManualSubmitting] = useState(false);
 
+  // SCRUM-198: Mixer Space — read items + actions from the shared MixerContext.
+  // The same items appear here on Create regardless of where they were added
+  // (manual modal here, or Scan Review on ScanScreen).
+  const { items: mixerItems, addToMixer, removeFromMixer } = useMixer();
+
   function openManualModal() {
     setManualName('');
     setManualCategory('spirit');
     setManualQuantity('');
     setManualUnit('');
     setManualModalVisible(true);
+  }
+
+  // SCRUM-198: Add to Mixer — local-only, doesn't hit the backend.
+  // Goes into the Mixer Space scratchpad, not the user's permanent Cabinet.
+  function handleManualAddToMixer() {
+    if (!manualName.trim()) {
+      Alert.alert('Required', 'Please enter an ingredient name.');
+      return;
+    }
+    addToMixer({
+      name: manualName.trim(),
+      category: manualCategory,
+      quantity: manualQuantity.trim() || null,
+      unit: manualUnit.trim() || null,
+    });
+    setManualModalVisible(false);
   }
 
   async function handleManualAdd() {
@@ -319,6 +341,47 @@ export default function CreateScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* ── SCRUM-198: Mixer Space ──
+          Session-scoped scratchpad for ingredients the user is considering
+          for the cocktail they're about to make. Distinct from the permanent
+          Cabinet. Items can be added from this screen's manual modal or
+          from ScanScreen's Review state. */}
+      <View style={styles.mixerSpaceBlock}>
+        <View style={styles.mixerSpaceHeader}>
+          <Text style={styles.mixerSpaceLabel}>MIXER SPACE</Text>
+          {mixerItems.length > 0 && (
+            <Text style={styles.mixerSpaceCount}>{mixerItems.length}</Text>
+          )}
+        </View>
+        {mixerItems.length === 0 ? (
+          <Text style={styles.mixerSpaceEmpty}>
+            Items you tap "Add to Mixer" on will appear here.
+          </Text>
+        ) : (
+          <View style={styles.mixerChipRow}>
+            {mixerItems.map((item) => (
+              <View key={item.id} style={styles.mixerChip}>
+                <Text style={styles.mixerChipText} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => removeFromMixer(item.id)}
+                  accessibilityLabel={`Remove ${item.name} from Mixer Space`}
+                  accessibilityRole="button"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name="close"
+                    size={14}
+                    color={Colors.accent}
+                  />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
       {/* ── Quick Style pills ── */}
       <View style={styles.quickStyleBlock}>
         <Text style={styles.quickStyleLabel}>QUICK STYLE</Text>
@@ -428,6 +491,15 @@ export default function CreateScreen({ navigation }) {
                 accessibilityRole="button"
               >
                 <Text style={styles.manualCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.manualMixerButton}
+                onPress={handleManualAddToMixer}
+                disabled={manualSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel="Add ingredient to Mixer Space"
+              >
+                <Text style={styles.manualMixerText}>Add to Mixer</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.manualConfirmButton}
@@ -772,6 +844,77 @@ const styles = StyleSheet.create({
   manualConfirmText: {
     ...Typography.labelMedium,
     color: Colors.background,
+  },
+
+  // SCRUM-198: Add to Mixer button (modal action) — sits between Cancel and
+  // Add to Cabinet. Outlined style to distinguish it from the gold-filled
+  // primary action while still feeling actionable.
+  manualMixerButton: {
+    flex: 1.5,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+  },
+  manualMixerText: {
+    ...Typography.labelMedium,
+    color: Colors.accent,
+  },
+
+  // SCRUM-198: Mixer Space block on Create screen — empty state + chip list
+  mixerSpaceBlock: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  mixerSpaceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  mixerSpaceLabel: {
+    ...Typography.label,
+    color: Colors.accent,
+    letterSpacing: 1.2,
+  },
+  mixerSpaceCount: {
+    ...Typography.labelSmall,
+    color: Colors.textSecondary,
+  },
+  mixerSpaceEmpty: {
+    ...Typography.bodySmall,
+    color: Colors.textHint,
+    fontStyle: 'italic',
+  },
+  mixerChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  mixerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentSubtle,
+    maxWidth: '100%',
+  },
+  mixerChipText: {
+    ...Typography.labelSmall,
+    color: Colors.accent,
+    maxWidth: 180,
   },
 
   // CTA Button (Make This Cocktail — primary)
