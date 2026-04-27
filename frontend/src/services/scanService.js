@@ -115,3 +115,66 @@ export async function scanImage(imageBase64) {
     mode: data.mode || 'unknown',
   };
 }
+
+// ── Cabinet category mapping ──────────────────────────────────────────────
+//
+// The /api/cabinet endpoint accepts only three categories:
+//   'spirit' | 'mixer' | 'garnish'
+//
+// SCRUM-186 vocabulary uses 10 finer-grained categories. This map collapses
+// them down for the cabinet write. Users can edit the category afterward in
+// the Cabinet UI if they disagree with our default.
+const CABINET_CATEGORY_MAP = {
+  spirit: 'spirit',
+  liqueur: 'spirit',     // alcoholic
+  wine_beer: 'spirit',   // alcoholic
+  mixer: 'mixer',
+  juice: 'mixer',
+  syrup: 'mixer',
+  bitters: 'mixer',
+  dairy: 'mixer',
+  fruit: 'garnish',
+  other: 'mixer',        // default — most "other" items in our vocab are mixers
+};
+
+function toCabinetCategory(scanCategory) {
+  return CABINET_CATEGORY_MAP[scanCategory] || 'mixer';
+}
+
+/**
+ * Batch-add a list of confirmed scan candidates to the user's Cabinet.
+ *
+ * Loops over the existing single-add helper instead of doing a bulk POST so we
+ * benefit from the existing error handling, auth, and BASE_URL guard. Per-item
+ * failures don't abort the batch — the caller gets an aggregate result they
+ * can render in the Done state.
+ *
+ * @param {Array<{name: string, category?: string|null}>} candidates
+ * @returns {Promise<{ added: Array, failed: Array<{name, error}> }>}
+ */
+export async function addConfirmedIngredients(candidates) {
+  // Lazy import to avoid a circular dep at module load time. cabinetService
+  // and scanService are sibling modules; they don't import each other except
+  // through this one function.
+  // eslint-disable-next-line global-require
+  const { addIngredient } = require('./cabinetService');
+
+  const added = [];
+  const failed = [];
+
+  for (const c of candidates) {
+    try {
+      const created = await addIngredient({
+        name: c.name,
+        category: toCabinetCategory(c.category),
+      });
+      added.push(created);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[scanService] addIngredient failed for', c.name, err.message);
+      failed.push({ name: c.name, error: err.message });
+    }
+  }
+
+  return { added, failed };
+}
