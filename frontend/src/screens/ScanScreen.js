@@ -25,6 +25,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -59,10 +60,31 @@ export default function ScanScreen({ navigation }) {
   const cameraRef = useRef(null);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
+  // SCRUM-198: expo-file-system's readAsStringAsync is native-only and throws
+  // on web ("method or property ... is not available on web"). On web we go
+  // through the standard fetch + FileReader path; the returned base64 string
+  // matches the native shape (no "data:image/...;base64," prefix) so the
+  // backend /api/scan endpoint sees the same payload regardless of platform.
   const toBase64 = async (uri) => {
-    // expo-camera and expo-image-picker both support base64: true inline,
-    // but FileSystem.readAsStringAsync is more memory-predictable on iOS
-    // for larger captures.
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          // result is "data:<mime>;base64,<payload>" — strip the prefix
+          const result = reader.result || '';
+          const commaIdx = result.indexOf(',');
+          resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+        };
+        reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // Native (iOS/Android): expo-camera and expo-image-picker both support
+    // base64: true inline, but FileSystem.readAsStringAsync is more
+    // memory-predictable on iOS for larger captures.
     return FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
