@@ -85,7 +85,9 @@ export async function recommendFromIngredients(ingredients, limit = 6) {
   }
 
   if (!Array.isArray(ingredients) || ingredients.length === 0) {
-    throw new Error('At least one ingredient is required.');
+    const e = new Error('At least one ingredient is required.');
+    e.kind = 'client';
+    throw e;
   }
 
   let res;
@@ -96,19 +98,38 @@ export async function recommendFromIngredients(ingredients, limit = 6) {
       body: JSON.stringify({ ingredients, limit }),
     });
   } catch (err) {
-    throw new Error(
+    // SCRUM-202: tag network failures so the UI can offer a retry path
+    // instead of treating them like a fatal/no-retry error.
+    const e = new Error(
       `Could not reach the backend. Check your WiFi and EXPO_PUBLIC_BACKEND_URL. (${err.message})`
     );
+    e.kind = 'network';
+    throw e;
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    if (res.status === 400) {
-      throw new Error(body.error || 'Those ingredients could not be processed.');
+    if (res.status >= 400 && res.status < 500) {
+      // SCRUM-202: 4xx is a client problem (bad input). Forward the backend's
+      // error message so the user can see what's wrong (e.g. "ingredients must
+      // contain at most 8 items"). Tag as 'badRequest' so UI does not offer
+      // a retry button — retrying with the same input will fail the same way.
+      const e = new Error(body.error || 'Those ingredients could not be processed.');
+      e.kind = 'badRequest';
+      e.status = res.status;
+      throw e;
     }
-    throw new Error(
+    // SCRUM-202: 5xx is a server problem. Backend message is usually too
+    // technical for end users (e.g. "Failed to generate recommendations"),
+    // so the UI substitutes a generic copy. Tag as 'serverError' so UI
+    // offers a retry button — the same request might succeed on a transient
+    // CocktailDB hiccup.
+    const e = new Error(
       body.error || `Recommendations failed (HTTP ${res.status}). Please try again.`
     );
+    e.kind = 'serverError';
+    e.status = res.status;
+    throw e;
   }
 
   const data = await res.json();
