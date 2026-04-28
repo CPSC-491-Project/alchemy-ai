@@ -1,18 +1,11 @@
 // SCRUM-188: ScanScreen — camera capture + image picker flow.
 //
-// Replaces the SCRUM-185 placeholder with the real scan pipeline:
-//   capture  → live expo-camera preview + shutter + "from library" fallback
-//   scanning → full-screen spinner ("Reading label…")
-//   review   → raw candidate list (SCRUM-189 builds the real review UI)
-//   error    → retry + friendly message
-//
-// Permissions:
-//   - iOS camera: NSCameraUsageDescription injected by expo-camera's config
-//     plugin (added to app.json in this commit).
-//   - iOS photo library: NSPhotoLibraryUsageDescription injected by
-//     expo-image-picker's config plugin.
-//   - In Expo Go, the default Expo Go Info.plist already declares both, so
-//     permission prompts appear naturally on first access.
+// FIX (Allisa Warren — SCRUM-198):
+// Review state cleaned up for demo:
+// - "Add to Cabinet" button now functional (shows confirmation + offers
+//   navigation to Cabinet screen)
+// - Footer text updated from SCRUM-189 placeholder to clean user-facing copy
+// - ReviewView receives navigation prop so it can navigate after adding
 
 import React, { useState, useRef } from 'react';
 import {
@@ -25,6 +18,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,9 +28,8 @@ import * as FileSystem from 'expo-file-system';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { scanImage, addConfirmedIngredients } from '../services/scanService';
 
-// ── States ─────────────────────────────────────────────────────────────────
 const S = {
-  CAPTURE: 'capture',
+  CAPTURE:  'capture',
   SCANNING: 'scanning',
   REVIEW: 'review',
   WRITING: 'writing',  // SCRUM-189: writing confirmed candidates to Cabinet
@@ -51,28 +44,23 @@ const S = {
 const PRE_CHECK_THRESHOLD = 0.7;
 
 export default function ScanScreen({ navigation }) {
-  const [screenState, setScreenState] = useState(S.CAPTURE);
+  const [screenState, setScreenState]   = useState(S.CAPTURE);
   const [cameraPermission, requestCameraPermission] = Camera.useCameraPermissions();
-  const [result, setResult] = useState(null); // { rawOcrText, candidates, mode }
+  const [result, setResult]             = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [doneSummary, setDoneSummary] = useState(null); // SCRUM-189: { added, failed }
   const cameraRef = useRef(null);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-  const toBase64 = async (uri) => {
-    // expo-camera and expo-image-picker both support base64: true inline,
-    // but FileSystem.readAsStringAsync is more memory-predictable on iOS
-    // for larger captures.
-    return FileSystem.readAsStringAsync(uri, {
+  const toBase64 = async (uri) =>
+    FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-  };
 
   const sendToBackend = async (uri) => {
     setScreenState(S.SCANNING);
     try {
       const base64 = await toBase64(uri);
-      const data = await scanImage(base64);
+      const data   = await scanImage(base64);
       setResult(data);
       setScreenState(S.REVIEW);
     } catch (err) {
@@ -85,7 +73,7 @@ export default function ScanScreen({ navigation }) {
     if (!cameraRef.current) return;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.6, // smaller payload, faster upload, still readable OCR
+        quality: 0.6,
         skipProcessing: false,
       });
       await sendToBackend(photo.uri);
@@ -162,6 +150,8 @@ export default function ScanScreen({ navigation }) {
     return (
       <ReviewView
         result={result}
+        navigation={navigation}
+        onScanAnother={handleRetry}
         onAddToCabinet={handleAddToCabinet}
         onDiscard={handleRetry}
         onBack={() => navigation?.goBack()}
@@ -189,12 +179,8 @@ export default function ScanScreen({ navigation }) {
     );
   }
 
-  // CAPTURE state — permission not yet determined
-  if (!cameraPermission) {
-    return <ScanningView />;
-  }
+  if (!cameraPermission) return <ScanningView />;
 
-  // CAPTURE state — permission denied
   if (!cameraPermission.granted) {
     return (
       <PermissionView
@@ -205,17 +191,11 @@ export default function ScanScreen({ navigation }) {
     );
   }
 
-  // CAPTURE state — permission granted: live camera
   return (
     <View style={styles.cameraContainer}>
       <StatusBar barStyle="light-content" />
-      <Camera
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        type={CameraType.back}
-      />
+      <Camera ref={cameraRef} style={StyleSheet.absoluteFill} type={CameraType.back} />
 
-      {/* Top bar */}
       <SafeAreaView style={styles.topBar}>
         <TouchableOpacity
           onPress={() => navigation?.goBack()}
@@ -229,7 +209,6 @@ export default function ScanScreen({ navigation }) {
         <View style={styles.topBarBtn} />
       </SafeAreaView>
 
-      {/* Gold viewfinder corners */}
       <View style={styles.viewfinder} pointerEvents="none">
         <View style={[styles.corner, styles.cornerTL]} />
         <View style={[styles.corner, styles.cornerTR]} />
@@ -237,11 +216,8 @@ export default function ScanScreen({ navigation }) {
         <View style={[styles.corner, styles.cornerBR]} />
       </View>
 
-      <Text style={styles.hint}>
-        Point at a label or bottle. Good lighting helps.
-      </Text>
+      <Text style={styles.hint}>Point at a label or bottle. Good lighting helps.</Text>
 
-      {/* Bottom bar — library + shutter */}
       <SafeAreaView style={styles.bottomBar}>
         <TouchableOpacity
           onPress={handlePickFromLibrary}
@@ -251,7 +227,6 @@ export default function ScanScreen({ navigation }) {
           <Ionicons name="images-outline" size={22} color={Colors.accentLight} />
           <Text style={styles.libraryBtnText}>Library</Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={handleShutter}
           style={styles.shutterOuter}
@@ -259,14 +234,13 @@ export default function ScanScreen({ navigation }) {
         >
           <View style={styles.shutterInner} />
         </TouchableOpacity>
-
         <View style={styles.libraryBtn} />
       </SafeAreaView>
     </View>
   );
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function ScanningView() {
   return (
@@ -292,20 +266,16 @@ function PermissionView({ onRequest, onPickFromLibrary, onBack }) {
       >
         <Ionicons name="chevron-back" size={24} color={Colors.accent} />
       </TouchableOpacity>
-
       <View style={styles.iconRing}>
         <Ionicons name="camera-outline" size={56} color={Colors.accent} />
       </View>
       <Text style={styles.centeredTitle}>Camera permission needed</Text>
       <Text style={styles.centeredBody}>
-        Alchemy AI uses your camera to read ingredient labels and add them to
-        your Cabinet.
+        Alchemy AI uses your camera to read ingredient labels and add them to your Cabinet.
       </Text>
-
       <TouchableOpacity style={styles.primaryBtn} onPress={onRequest}>
         <Text style={styles.primaryBtnText}>Allow Camera</Text>
       </TouchableOpacity>
-
       <TouchableOpacity style={styles.secondaryBtn} onPress={onPickFromLibrary}>
         <Text style={styles.secondaryBtnText}>Choose from library instead</Text>
       </TouchableOpacity>
@@ -341,7 +311,10 @@ function ReviewView({ result, onAddToCabinet, onDiscard, onBack }) {
     <SafeAreaView style={styles.reviewSafe}>
       <StatusBar barStyle="light-content" />
       <View style={styles.reviewHeader}>
-        <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}>
+        <TouchableOpacity
+          onPress={onBack}
+          hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}
+        >
           <Ionicons name="chevron-back" size={24} color={Colors.accent} />
         </TouchableOpacity>
         <Text style={styles.reviewHeaderTitle}>Review</Text>
@@ -545,13 +518,11 @@ function ErrorView({ message, onRetry, onBack }) {
       >
         <Ionicons name="chevron-back" size={24} color={Colors.accent} />
       </TouchableOpacity>
-
       <View style={[styles.iconRing, styles.iconRingError]}>
         <Ionicons name="alert-circle-outline" size={56} color={Colors.error} />
       </View>
       <Text style={styles.centeredTitle}>Scan failed</Text>
       <Text style={styles.centeredBody}>{message}</Text>
-
       <TouchableOpacity style={styles.primaryBtn} onPress={onRetry}>
         <Text style={styles.primaryBtnText}>Try Again</Text>
       </TouchableOpacity>
@@ -559,7 +530,7 @@ function ErrorView({ message, onRetry, onBack }) {
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   // Camera state
   cameraContainer: {

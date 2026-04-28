@@ -102,6 +102,8 @@ export default function LoginScreen({ navigation }) {
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   });
 
+
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
@@ -112,7 +114,7 @@ export default function LoginScreen({ navigation }) {
   // Handle the response from expo-auth-session after user completes Google sign-in
   useEffect(() => {
     if (response?.type === 'success') {
-      const { id_token } = response.params;
+      const id_token = response.params?.id_token ?? response.authentication?.idToken;
       const credential = GoogleAuthProvider.credential(id_token);
       setLoading(true);
       signInWithCredential(auth, credential)
