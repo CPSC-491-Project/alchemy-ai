@@ -3,10 +3,15 @@
 // Consumes the normalized drink shape: { id, name, thumb, category, alcoholic,
 //   glass, instructions, ingredients }
 //
-// FIX (Allisa Warren — SCRUM-198):
+// FIX (Ngoc Tran — SCRUM-198):
 // Added useFonts — CormorantGaramond_300Light + DMSans_400Regular + DMSans_500Medium.
 // Missing this causes a silent blank-screen crash on Expo web.
 // Font guard (return null) placed after all hooks, before JSX.
+//
+// FEATURE (Ngoc Tran — SCRUM-205):
+// "Scan My Cabinet" button + result modal. Compares the drink's required
+// ingredients against the user's cabinet using compareCabinetToDrink from
+// SCRUM-204. Renders matched / missing lists and a coverage summary.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -17,11 +22,15 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { getCocktailById } from '../services/cocktailService';
+import { getCabinet } from '../services/cabinetService';
+import { compareCabinetToDrink } from '../utils/cabinetCoverage';
+import { useAuth } from '../context/AuthContext';
 
 export default function CocktailDetailScreen({ route, navigation }) {
   // FIX: useFonts — declared FIRST before any other hooks.
@@ -38,12 +47,51 @@ export default function CocktailDetailScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // SCRUM-205: Cabinet scan state. Hooks declared up top, before any early
+  // returns, to keep React's rules-of-hooks ordering stable.
+  const { isGuest } = useAuth();
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState(null); // { matched, missing, matchedCount, ingredientCount, matchPercentage }
+  const [scanError, setScanError] = useState(null);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+
   useEffect(() => {
     getCocktailById(id)
       .then(setCocktail)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // SCRUM-205: Run a cabinet scan against the loaded drink.
+  // - For guests, this never runs — the button navigates to Login instead.
+  // - getCabinet() returns [] for any failure (auth, network, missing config),
+  //   which we treat as a valid "empty cabinet" outcome rather than an error.
+  // - The compare function is pure and synchronous; only the cabinet fetch
+  //   is async, so the loading window is short.
+  async function handleScan() {
+    if (!cocktail) return;
+    setScanning(true);
+    setScanError(null);
+    setScanResult(null);
+    setScanModalOpen(true);
+    try {
+      const cabinet = await getCabinet();
+      const result = compareCabinetToDrink(cabinet, cocktail.ingredients || []);
+      setScanResult(result);
+    } catch (err) {
+      // getCabinet() shouldn't throw, but guard anyway so the modal never
+      // gets stuck in a perpetual loading state.
+      setScanError(err.message || 'Something went wrong scanning your cabinet.');
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  function closeScanModal() {
+    setScanModalOpen(false);
+    setScanResult(null);
+    setScanError(null);
+  }
 
   // FIX: Font guard — must be AFTER all hooks, BEFORE any JSX return
   if (!fontsLoaded) return null;
@@ -133,8 +181,119 @@ export default function CocktailDetailScreen({ route, navigation }) {
           </>
         )}
 
+        {/* ── SCRUM-205: Scan My Cabinet ── */}
+        <TouchableOpacity
+          style={styles.scanButton}
+          onPress={isGuest ? () => navigation.navigate('Login') : handleScan}
+          accessibilityLabel={
+            isGuest ? 'Sign in to scan your cabinet' : 'Scan my cabinet'
+          }
+          activeOpacity={0.8}
+        >
+          <Text style={styles.scanButtonText}>
+            {isGuest ? 'Sign in to Scan My Cabinet' : 'Scan My Cabinet'}
+          </Text>
+        </TouchableOpacity>
+
         <View style={styles.bottomSpacer} />
       </View>
+
+      {/* ── SCRUM-205: Scan Result Modal ── */}
+      <Modal
+        visible={scanModalOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={closeScanModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Cabinet Match</Text>
+              <TouchableOpacity
+                onPress={closeScanModal}
+                accessibilityLabel="Close"
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {scanning ? (
+              <View style={styles.modalCenter}>
+                <ActivityIndicator color={Colors.accent} size="large" />
+                <Text style={styles.modalHint}>Scanning your cabinet…</Text>
+              </View>
+            ) : scanError ? (
+              <View style={styles.modalCenter}>
+                <Text style={styles.modalErrorText}>{scanError}</Text>
+                <TouchableOpacity onPress={handleScan} style={styles.modalRetry}>
+                  <Text style={styles.modalRetryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : scanResult ? (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* ── Summary line ── */}
+                <Text style={styles.modalSummary}>
+                  You have{' '}
+                  <Text style={styles.modalSummaryAccent}>
+                    {scanResult.matchedCount}
+                  </Text>{' '}
+                  of {scanResult.ingredientCount} ingredients
+                  {scanResult.ingredientCount > 0
+                    ? ` (${Math.round(scanResult.matchPercentage * 100)}%)`
+                    : ''}
+                </Text>
+
+                {/* ── Have list ── */}
+                {scanResult.matched.length > 0 && (
+                  <>
+                    <Text style={styles.modalSectionLabel}>You Have</Text>
+                    {scanResult.matched.map((m, i) => (
+                      <View key={`have-${i}`} style={styles.modalRow}>
+                        <Text style={styles.modalCheck}>✓</Text>
+                        <Text style={styles.modalRowText} numberOfLines={1}>
+                          {m.drinkIngredient}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {/* ── Missing list ── */}
+                {scanResult.missing.length > 0 && (
+                  <>
+                    <Text style={styles.modalSectionLabel}>Missing</Text>
+                    {scanResult.missing.map((name, i) => (
+                      <View key={`miss-${i}`} style={styles.modalRow}>
+                        <Text style={styles.modalCross}>✕</Text>
+                        <Text style={styles.modalRowText} numberOfLines={1}>
+                          {name}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {/* ── Empty cabinet hint ── */}
+                {scanResult.matchedCount === 0 &&
+                  scanResult.ingredientCount > 0 && (
+                    <TouchableOpacity
+                      style={styles.modalCabinetCta}
+                      onPress={() => {
+                        closeScanModal();
+                        navigation.navigate('IngredientCabinet');
+                      }}
+                    >
+                      <Text style={styles.modalCabinetCtaText}>
+                        Add ingredients to your cabinet →
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -178,4 +337,68 @@ const styles = StyleSheet.create({
   backBtn:          { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md },
   backBtnText:      { ...Typography.body, color: Colors.accent },
   bottomSpacer:     { height: Spacing.xl },
+
+  // ── SCRUM-205: Scan My Cabinet button ──────────────────────────────────────
+  scanButton:       {
+    marginTop: Spacing.lg, marginBottom: Spacing.sm,
+    paddingVertical: 14, paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.accent,
+    backgroundColor: Colors.accentGlow,
+    alignItems: 'center',
+  },
+  scanButtonText:   {
+    ...Typography.button,
+    color: Colors.accent,
+  },
+
+  // ── SCRUM-205: Scan result modal ───────────────────────────────────────────
+  modalBackdrop:    {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: Spacing.md,
+  },
+  modalCard:        {
+    width: '100%', maxWidth: 480, maxHeight: '80%',
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.accentDim,
+    padding: Spacing.lg,
+  },
+  modalHeader:      {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  modalTitle:       { ...Typography.heading, fontSize: 24 },
+  modalClose:       { ...Typography.body, color: Colors.textSecondary, fontSize: 18 },
+  modalCenter:      { paddingVertical: Spacing.xl, alignItems: 'center' },
+  modalHint:        { ...Typography.bodySmall, marginTop: Spacing.md },
+  modalErrorText:   { ...Typography.body, color: Colors.error, marginBottom: Spacing.md, textAlign: 'center' },
+  modalRetry:       {
+    paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.accent,
+  },
+  modalRetryText:   { ...Typography.button, color: Colors.accent },
+  modalSummary:     {
+    ...Typography.body, marginBottom: Spacing.md,
+    color: Colors.textPrimary,
+  },
+  modalSummaryAccent:{ color: Colors.accent, fontFamily: 'DMSans_500Medium' },
+  modalSectionLabel:{
+    ...Typography.label,
+    marginTop: Spacing.md, marginBottom: Spacing.sm,
+  },
+  modalRow:         {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  modalCheck:       { ...Typography.body, color: Colors.success, width: 24, fontSize: 16 },
+  modalCross:       { ...Typography.body, color: Colors.error,   width: 24, fontSize: 16 },
+  modalRowText:     { ...Typography.body, flex: 1 },
+  modalCabinetCta:  {
+    marginTop: Spacing.lg, paddingVertical: Spacing.sm,
+    alignItems: 'center',
+  },
+  modalCabinetCtaText: { ...Typography.body, color: Colors.accent },
 });
