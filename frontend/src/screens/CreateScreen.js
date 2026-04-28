@@ -42,6 +42,7 @@ const PARTY_COCKTAILS = [
     style: 'Strong',
     time: '5 min',
     method: 'Built',
+    steps: ['Fill a glass with ice.', 'Pour dark rum over ice.', 'Top with ginger beer.', 'Squeeze lime and garnish.'],
   },
   {
     id: '2',
@@ -52,6 +53,7 @@ const PARTY_COCKTAILS = [
     style: 'Bitter',
     time: '3 min',
     method: 'Stirred',
+    steps: ['Add gin, vermouth and Campari to a mixing glass.', 'Add ice and stir for 30 seconds.', 'Strain into a glass over ice.', 'Garnish with orange peel.'],
   },
   {
     id: '3',
@@ -62,6 +64,7 @@ const PARTY_COCKTAILS = [
     style: 'Citrus',
     time: '5 min',
     method: 'Shaken',
+    steps: ['Salt the rim of a glass.', 'Shake tequila, triple sec and lime with ice.', 'Strain into the glass over ice.', 'Garnish with lime wheel.'],
   },
   {
     id: '4',
@@ -72,6 +75,7 @@ const PARTY_COCKTAILS = [
     style: 'Classic',
     time: '4 min',
     method: 'Stirred',
+    steps: ['Add sugar and bitters to a rocks glass.', 'Add bourbon and a large ice cube.', 'Stir gently for 20 seconds.', 'Express orange peel over the glass and garnish.'],
   },
   {
     id: '5',
@@ -82,6 +86,7 @@ const PARTY_COCKTAILS = [
     style: 'Fresh',
     time: '6 min',
     method: 'Built',
+    steps: ['Muddle mint and lime juice in a glass.', 'Add rum and simple syrup.', 'Fill with ice and top with soda water.', 'Stir gently and garnish with mint.'],
   },
 ];
 
@@ -200,13 +205,18 @@ export default function CreateScreen({ navigation }) {
     }
   }
 
-  const onViewableChanged = useRef(({ viewableItems }) => {
-    if (viewableItems.length > 0) {
-      setActiveIndex(viewableItems[0].index ?? 0);
-    }
-  }).current;
-
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  // SCRUM-196 (from develop): debounced scroll handler for the carousel.
+  // Replaces the earlier onViewableItemsChanged approach — the actual
+  // <Animated.FlatList> below wires this up via onScroll.
+  const scrollTimer = useRef(null);
+  const onScroll = useCallback((e) => {
+    const offset = e.nativeEvent.contentOffset.x;
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current = setTimeout(() => {
+      const index = Math.round(offset / (CARD_W + Spacing.sm));
+      setActiveIndex(Math.max(0, Math.min(index, PARTY_COCKTAILS.length - 1)));
+    }, 50);
+  }, []);
 
   const handleStylePress = useCallback(
     (style) => {
@@ -263,12 +273,14 @@ export default function CreateScreen({ navigation }) {
         snapToInterval={CARD_W + Spacing.sm}
         decelerationRate="fast"
         contentContainerStyle={styles.carouselContent}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          { useNativeDriver: true }
-        )}
-        onViewableItemsChanged={onViewableChanged}
-        viewabilityConfig={viewabilityConfig}
+        onScroll={(e) => {
+          Animated.event(
+            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+            { useNativeDriver: false }
+          )(e);
+          onScroll(e);
+        }}
+        scrollEventThrottle={16}
         renderItem={({ item }) => <CocktailCard item={item} />}
       />
 
