@@ -1,104 +1,197 @@
 // SCRUM-199: Recommendation engine.
 //
-// Pure scoring logic. Takes a list of user ingredients (the "Mixer Space")
-// and an array of candidate drinks with their full ingredient lists, and
-// returns a ranked array of recommendations.
+// Given a list of user ingredients (the Mixer Space contents), returns a
+// ranked array of cocktails the user can make (or nearly make).
 //
-// No I/O — all network calls happen in routes/recommendations.js. Keeping
-// the engine pure makes it trivial to unit test (SCRUM-202 follow-up).
+// Algorithm:
+//   1. Normalize input (uses normalize() from ingredientMatcher to stay
+//      consistent with the OCR pipeline — same canonicalization rules).
+//   2. Promise.all of cocktailService.filterByIngredient() per input.
+//   3. Aggregate by frequency: drinkId → appearance count.
+//   4. Take top CANDIDATE_POOL by appearance count, fetch full details
+//      via cocktailService.getCocktailById() in parallel.
+//   5. Score each: matchedCount = drink ingredients ∩ user ingredients
+//      (case- and punctuation-insensitive, with Levenshtein tolerance for
+//      minor variants); matchPercentage = matchedCount / totalIngredients.
+//   6. Filter matchPercentage >= MIN_MATCH_PERCENTAGE.
+//   7. Sort by matchPercentage desc, matchedCount desc as tiebreaker.
+//   8. Return top `limit` results (default DEFAULT_LIMIT).
 //
-// Scoring rationale:
-//   - matchCount: how many user ingredients the drink uses. Primary signal.
-//   - coverage:  matchCount / totalIngredients. Rewards drinks that use a
-//                high % of what the user has (a 2-of-3 cocktail beats a
-//                2-of-10 cocktail at the same matchCount).
-//   - score:     0.7 * (matchCount / userIngredientCount)
-//                + 0.3 * coverage
-//                Weighted toward "uses lots of what I have" but not blind
-//                to drinks that need a few extras.
-//
-// Tuning knobs are at the top so they're easy to adjust during testing.
+// Why the two-pass design (filter → lookup): filter.php returns minimal
+// payloads (no ingredient lists) but is cheap. lookup.php returns full
+// drink details but costs one round-trip per drink. By pre-ranking with
+// filter.php and only fetching full details for the top CANDIDATE_POOL,
+// we keep CocktailDB calls bounded at userIngredients + CANDIDATE_POOL.
+
+const levenshtein = require('fast-levenshtein');
+const cocktailService = require('./cocktailService');
+const { _internal } = require('./ingredientMatcher');
+const { normalize } = _internal;
 
 // ── Tuning knobs ───────────────────────────────────────────────────────────
-const MATCH_WEIGHT = 0.7;     // weight for "fraction of user ingredients used"
-const COVERAGE_WEIGHT = 0.3;  // weight for "fraction of drink covered"
+const MAX_INGREDIENTS = 8;            // SCRUM-202 mixer cap
+const CANDIDATE_POOL = 30;            // top-N by appearance count to fetch in full
+const MIN_MATCH_PERCENTAGE = 0.4;     // drop drinks with worse coverage than this
+const DEFAULT_LIMIT = 6;              // results returned to client by default
+const FUZZY_SIMILARITY_THRESHOLD = 0.9; // for Levenshtein-based ingredient match
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function normalize(s) {
-  return (s || '').toLowerCase().trim();
+
+// Normalized similarity in [0..1]. 1.0 = identical, 0.0 = totally different.
+function similarity(a, b) {
+  if (!a || !b) return 0;
+  const max = Math.max(a.length, b.length);
+  if (max === 0) return 0;
+  return 1 - levenshtein.get(a, b) / max;
 }
 
-// Case-insensitive set membership for ingredient name lookup.
-function makeIngredientSet(ingredients) {
-  return new Set(ingredients.map(normalize));
-}
-
-// ── Public: score a single drink against user ingredients ─────────────────
-function scoreDrink(drink, userIngredientSet) {
-  const drinkIngredients = (drink.ingredients ?? []).map((ing) => ing.name);
-  const totalIngredients = drinkIngredients.length;
-
-  if (totalIngredients === 0) {
-    // Defensive: filter.php-only payloads don't include ingredient lists.
-    // Caller is expected to pass full lookup.php data; if not, score is 0.
-    return {
-      ...drink,
-      matchedIngredients: [],
-      missingIngredients: [],
-      matchCount: 0,
-      totalIngredients: 0,
-      coverage: 0,
-      score: 0,
-    };
+// Does this drink ingredient match any of the user's ingredients?
+// Exact normalized match is the fast path; Levenshtein fallback handles
+// minor spelling variants.
+function ingredientIsInUserSet(drinkIngredient, normalizedUserSet) {
+  const norm = normalize(drinkIngredient);
+  if (!norm) return false;
+  if (normalizedUserSet.has(norm)) return true;
+  for (const userIng of normalizedUserSet) {
+    if (similarity(norm, userIng) >= FUZZY_SIMILARITY_THRESHOLD) return true;
   }
+  return false;
+}
+
+// Score a single fully-fetched drink against the normalized user ingredient set.
+function scoreDrink(drink, normalizedUserSet) {
+  const drinkIngredients = (drink.ingredients ?? []).map((ing) => ing.name);
+  const ingredientCount = drinkIngredients.length;
+  if (ingredientCount === 0) return null; // skip drinks with no ingredient data
 
   const matched = [];
   const missing = [];
-
   for (const name of drinkIngredients) {
-    if (userIngredientSet.has(normalize(name))) {
+    if (ingredientIsInUserSet(name, normalizedUserSet)) {
       matched.push(name);
     } else {
       missing.push(name);
     }
   }
 
-  const matchCount = matched.length;
-  const userCount = userIngredientSet.size || 1; // avoid div-by-zero
-  const coverage = matchCount / totalIngredients;
-  const useFrac = matchCount / userCount;
-  const score = MATCH_WEIGHT * useFrac + COVERAGE_WEIGHT * coverage;
+  const matchedCount = matched.length;
+  const matchPercentage = matchedCount / ingredientCount;
 
   return {
     id: drink.id,
     name: drink.name,
-    thumb: drink.thumb,
+    thumbnail: drink.thumb,            // remap to consumer-expected field name
     category: drink.category,
     alcoholic: drink.alcoholic,
-    glass: drink.glass,
-    matchedIngredients: matched,
+    matchPercentage: Number(matchPercentage.toFixed(3)),
+    matchedCount,
+    ingredientCount,
     missingIngredients: missing,
-    matchCount,
-    totalIngredients,
-    coverage: Number(coverage.toFixed(3)),
-    score: Number(score.toFixed(3)),
   };
 }
 
-// ── Public: rank a list of drinks against user ingredients ────────────────
+// ── Public: rank pre-fetched drinks against user ingredients ──────────────
 //
-// `userIngredients` is a string[] from the client (Mixer Space contents).
-// `drinks` is an array of normalized drink objects with full ingredient
-// arrays (i.e. from cocktailService.getCocktailById, NOT filterByIngredient).
-//
-// Returns the array sorted by score desc, with drinks that match zero
-// user ingredients filtered out.
-function rankDrinks(userIngredients, drinks) {
-  const userSet = makeIngredientSet(userIngredients);
+// Pure function. No I/O. Used internally by recommendDrinks and directly
+// by tests that want to verify scoring logic without mocking the network.
+function rankDrinks(userIngredients, drinks, opts = {}) {
+  const { limit = DEFAULT_LIMIT, minMatchPercentage = MIN_MATCH_PERCENTAGE } = opts;
+  const normalizedUserSet = new Set(
+    userIngredients.map(normalize).filter(Boolean)
+  );
+
   return drinks
-    .map((d) => scoreDrink(d, userSet))
-    .filter((r) => r.matchCount > 0)
-    .sort((a, b) => b.score - a.score);
+    .map((d) => scoreDrink(d, normalizedUserSet))
+    .filter((r) => r !== null)
+    .filter((r) => r.matchPercentage >= minMatchPercentage)
+    .sort((a, b) => {
+      if (b.matchPercentage !== a.matchPercentage) {
+        return b.matchPercentage - a.matchPercentage;
+      }
+      return b.matchedCount - a.matchedCount; // tiebreaker
+    })
+    .slice(0, limit);
 }
 
-module.exports = { scoreDrink, rankDrinks };
+// ── Public: full pipeline, hits CocktailDB ────────────────────────────────
+//
+// Throws on cap violation or on upstream CocktailDB failures. The route
+// catches and translates to HTTP 400/500 — keeping the engine throw-based
+// makes it composable for non-HTTP callers (e.g. future scheduled jobs).
+async function recommendDrinks(ingredients, opts = {}) {
+  if (!Array.isArray(ingredients)) {
+    throw Object.assign(new Error('ingredients must be an array'), { status: 400 });
+  }
+  const cleaned = [
+    ...new Set(
+      ingredients
+        .filter((i) => typeof i === 'string')
+        .map((i) => i.trim())
+        .filter(Boolean)
+    ),
+  ];
+  if (cleaned.length === 0) {
+    throw Object.assign(
+      new Error('ingredients must contain at least one non-empty string'),
+      { status: 400 }
+    );
+  }
+  if (cleaned.length > MAX_INGREDIENTS) {
+    throw Object.assign(
+      new Error(`ingredients must contain at most ${MAX_INGREDIENTS} items`),
+      { status: 400 }
+    );
+  }
+
+  // Step 1: filter.php per ingredient. Per-ingredient failures (404, empty
+  // results, etc.) are absorbed so one bad ingredient name doesn't kill
+  // the whole request. Upstream-wide failures (e.g. CocktailDB down) are
+  // not caught here and propagate up to the route's 500 handler.
+  const filterResults = await Promise.all(
+    cleaned.map(async (ing) => {
+      try {
+        return await cocktailService.filterByIngredient(ing);
+      } catch {
+        return [];
+      }
+    })
+  );
+
+  // Step 2: aggregate appearance counts.
+  const appearances = new Map(); // drinkId → count
+  for (const drinks of filterResults) {
+    for (const drink of drinks) {
+      if (!drink?.id) continue;
+      appearances.set(drink.id, (appearances.get(drink.id) ?? 0) + 1);
+    }
+  }
+  if (appearances.size === 0) return [];
+
+  // Step 3: pick top CANDIDATE_POOL by frequency, fetch full details.
+  const topIds = [...appearances.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, CANDIDATE_POOL)
+    .map(([id]) => id);
+
+  const fullDrinks = await Promise.all(
+    topIds.map((id) => cocktailService.getCocktailById(id))
+  );
+
+  // Step 4: score, filter, rank.
+  return rankDrinks(cleaned, fullDrinks.filter(Boolean), opts);
+}
+
+module.exports = {
+  recommendDrinks,
+  // Exported for direct testing without mocking the network:
+  _internal: {
+    rankDrinks,
+    scoreDrink,
+    ingredientIsInUserSet,
+    similarity,
+    MAX_INGREDIENTS,
+    CANDIDATE_POOL,
+    MIN_MATCH_PERCENTAGE,
+    DEFAULT_LIMIT,
+  },
+};
