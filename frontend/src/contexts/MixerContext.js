@@ -14,8 +14,16 @@
 // State lives in memory only — refresh clears the mixer. If we want
 // persistence later, swap the useState for AsyncStorage-backed state.
 // The provider API is intentionally narrow so the call sites stay simple.
+//
+// SCRUM-202: Mixer is capped at MIXER_MAX items. addToMixer silently
+// no-ops when at cap; UIs read `isFull` to gray out their Add-to-Mixer
+// buttons and surface the cap to the user before they tap.
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
+
+// Exported so UI components can render "X / 8" counters without
+// hard-coding the magic number alongside this module.
+export const MIXER_MAX = 8;
 
 const MixerContext = createContext(null);
 
@@ -25,8 +33,11 @@ export function MixerProvider({ children }) {
   const addToMixer = useCallback((item) => {
     if (!item || !item.name) return;
     // Dedupe by case-insensitive name so repeated Add-to-Mixer presses
-    // don't pile the same ingredient up multiple times.
+    // don't pile the same ingredient up multiple times. Cap check happens
+    // inside the updater so we read the latest items length, not a stale
+    // closure value.
     setItems((prev) => {
+      if (prev.length >= MIXER_MAX) return prev; // SCRUM-202: silent no-op at cap
       const existing = prev.find(
         (i) => i.name.toLowerCase() === item.name.toLowerCase()
       );
@@ -52,7 +63,14 @@ export function MixerProvider({ children }) {
     setItems([]);
   }, []);
 
-  const value = { items, addToMixer, removeFromMixer, clearMixer };
+  const value = {
+    items,
+    addToMixer,
+    removeFromMixer,
+    clearMixer,
+    isFull: items.length >= MIXER_MAX, // SCRUM-202: UI uses this to disable add buttons
+    max: MIXER_MAX,
+  };
 
   return <MixerContext.Provider value={value}>{children}</MixerContext.Provider>;
 }
@@ -70,6 +88,8 @@ export function useMixer() {
       addToMixer: () => {},
       removeFromMixer: () => {},
       clearMixer: () => {},
+      isFull: false,
+      max: MIXER_MAX,
     };
   }
   return ctx;

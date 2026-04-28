@@ -318,7 +318,8 @@ function ReviewView({ result, onAddToCabinet, onDiscard, onBack }) {
 
   // SCRUM-198: pull mixer actions from shared context so "Add to Mixer"
   // here on Review puts items into the same Mixer Space rendered on Create.
-  const { addToMixer } = useMixer();
+  // SCRUM-202: also read isFull so we can disable the button at cap.
+  const { addToMixer, isFull: isMixerFull, max: mixerMax } = useMixer();
 
   // Initialize selection: candidates at or above PRE_CHECK_THRESHOLD start
   // checked. Keyed by index because canonical name is unique within results
@@ -420,20 +421,29 @@ function ReviewView({ result, onAddToCabinet, onDiscard, onBack }) {
 
         {candidates.length > 0 && (
           <>
-            {/* SCRUM-198: action row — Add to Mixer (left) + Add to Cabinet (right) */}
+            {/* SCRUM-198: action row — Add to Mixer (left) + Add to Cabinet (right)
+                SCRUM-202: button also disabled when Mixer Space is full (8/8). */}
             <View style={styles.reviewActionRow}>
               <TouchableOpacity
                 style={[
                   styles.mixerActionBtn,
-                  selectedCount === 0 && styles.mixerActionBtnDisabled,
+                  (selectedCount === 0 || isMixerFull) &&
+                    styles.mixerActionBtnDisabled,
                 ]}
                 activeOpacity={0.85}
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 || isMixerFull}
                 onPress={handleAddSelectedToMixer}
-                accessibilityLabel={`Add ${selectedCount} ingredients to Mixer Space`}
+                accessibilityLabel={
+                  isMixerFull
+                    ? `Mixer Space is full (${mixerMax} maximum). Remove items first.`
+                    : `Add ${selectedCount} ingredients to Mixer Space`
+                }
+                accessibilityState={{ disabled: selectedCount === 0 || isMixerFull }}
               >
                 <Text style={styles.mixerActionBtnText}>
-                  Add {selectedCount > 0 ? `${selectedCount} ` : ''}to Mixer
+                  {isMixerFull
+                    ? 'Mixer Full'
+                    : `Add ${selectedCount > 0 ? `${selectedCount} ` : ''}to Mixer`}
                 </Text>
               </TouchableOpacity>
 

@@ -157,7 +157,7 @@ export default function CreateScreen({ navigation }) {
   // SCRUM-198: Mixer Space — read items + actions from the shared MixerContext.
   // The same items appear here on Create regardless of where they were added
   // (manual modal here, or Scan Review on ScanScreen).
-  const { items: mixerItems, addToMixer, removeFromMixer } = useMixer();
+  const { items: mixerItems, addToMixer, removeFromMixer, isFull: isMixerFull, max: mixerMax } = useMixer();
 
   function openManualModal() {
     setManualName('');
@@ -362,7 +362,11 @@ export default function CreateScreen({ navigation }) {
         <View style={styles.mixerSpaceHeader}>
           <Text style={styles.mixerSpaceLabel}>MIXER SPACE</Text>
           {mixerItems.length > 0 && (
-            <Text style={styles.mixerSpaceCount}>{mixerItems.length}</Text>
+            // SCRUM-202: show capacity (e.g. "3 / 8") so users see the cap
+            // before they hit it, not just at the moment of rejection.
+            <Text style={styles.mixerSpaceCount}>
+              {mixerItems.length} / {mixerMax}
+            </Text>
           )}
         </View>
         {mixerItems.length === 0 ? (
@@ -391,6 +395,13 @@ export default function CreateScreen({ navigation }) {
               </View>
             ))}
           </View>
+        )}
+        {/* SCRUM-202: At-cap helper. Renders below chips when full so the
+            user understands why their next add will be rejected. */}
+        {isMixerFull && (
+          <Text style={styles.mixerSpaceFullHint}>
+            Mixer Space is full ({mixerMax} max). Remove an item to add more.
+          </Text>
         )}
       </View>
 
@@ -505,13 +516,28 @@ export default function CreateScreen({ navigation }) {
                 <Text style={styles.manualCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.manualMixerButton}
+                style={[
+                  styles.manualMixerButton,
+                  isMixerFull && styles.manualMixerButtonDisabled,
+                ]}
                 onPress={handleManualAddToMixer}
-                disabled={manualSubmitting}
+                disabled={manualSubmitting || isMixerFull}
                 accessibilityRole="button"
-                accessibilityLabel="Add ingredient to Mixer Space"
+                accessibilityLabel={
+                  isMixerFull
+                    ? `Mixer is full (${mixerMax} maximum)`
+                    : 'Add ingredient to Mixer Space'
+                }
+                accessibilityState={{ disabled: isMixerFull }}
               >
-                <Text style={styles.manualMixerText}>Add to Mixer</Text>
+                <Text
+                  style={[
+                    styles.manualMixerText,
+                    isMixerFull && styles.manualMixerTextDisabled,
+                  ]}
+                >
+                  {isMixerFull ? 'Mixer Full' : 'Add to Mixer'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.manualConfirmButton}
@@ -875,6 +901,18 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
 
+  // SCRUM-202: Disabled state for "Add to Mixer" when at cap. Pulls
+  // chrome down to muted gray so the affordance still reads as a button
+  // but clearly inactive.
+  manualMixerButtonDisabled: {
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
+    opacity: 0.5,
+  },
+  manualMixerTextDisabled: {
+    color: Colors.textMuted,
+  },
+
   // SCRUM-198: Mixer Space block on Create screen — empty state + chip list
   mixerSpaceBlock: {
     marginHorizontal: Spacing.lg,
@@ -905,6 +943,14 @@ const styles = StyleSheet.create({
     ...Typography.bodySmall,
     color: Colors.textHint,
     fontStyle: 'italic',
+  },
+  // SCRUM-202: At-cap helper text inside the Mixer Space block.
+  // Slightly muted but readable — not an error, just a heads-up.
+  mixerSpaceFullHint: {
+    ...Typography.caption,
+    color: Colors.textHint,
+    fontStyle: 'italic',
+    marginTop: Spacing.sm,
   },
   mixerChipRow: {
     flexDirection: 'row',
