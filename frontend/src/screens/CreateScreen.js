@@ -15,6 +15,7 @@ import {
   Dimensions,
   StatusBar,
   ImageBackground,
+  Image,
   Animated,
   Platform,
   Modal,
@@ -26,6 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { addIngredient } from '../services/cabinetService';
+import { recommendFromIngredients } from '../services/recommendationsService';
 import { useMixer } from '../contexts/MixerContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -158,6 +160,50 @@ export default function CreateScreen({ navigation }) {
   // The same items appear here on Create regardless of where they were added
   // (manual modal here, or Scan Review on ScanScreen).
   const { items: mixerItems, addToMixer, removeFromMixer } = useMixer();
+
+  // SCRUM-201: Recommend Me Drinks — modal-driven flow that takes the
+  // user's Mixer Space contents and asks the backend (SCRUM-199) for
+  // ranked drink suggestions via the recommendFromIngredients() service
+  // (SCRUM-200). Three states drive the modal: loading, error/empty, results.
+  const [recommendModalVisible, setRecommendModalVisible] = useState(false);
+  const [recommendLoading, setRecommendLoading] = useState(false);
+  const [recommendations, setRecommendations] = useState([]);
+
+  async function handleRecommend() {
+    // Defensive: button is disabled when empty, but guard anyway in case
+    // the disabled state is ever bypassed (e.g. accessibility tools).
+    if (mixerItems.length === 0) return;
+
+    setRecommendModalVisible(true);
+    setRecommendLoading(true);
+    setRecommendations([]);
+    try {
+      const recs = await recommendFromIngredients(
+        mixerItems.map((i) => i.name)
+      );
+      setRecommendations(recs);
+    } catch (err) {
+      // Close the modal first so the Alert isn't stacked behind it
+      setRecommendModalVisible(false);
+      Alert.alert('Error', err.message || 'Could not load recommendations.');
+    } finally {
+      setRecommendLoading(false);
+    }
+  }
+
+  function handleRecommendCardPress(drink) {
+    setRecommendModalVisible(false);
+    // recommendation results expose `thumbnail`, but RecipeDetailScreen
+    // expects `image` (or `thumb`) for its hero. Map it explicitly so
+    // the loading state isn't blank during getCocktailById's fetch.
+    const cocktailForDetail = {
+      ...drink,
+      image: drink.thumbnail,
+    };
+    (navigation.getParent() ?? navigation).navigate('RecipeDetail', {
+      cocktail: cocktailForDetail,
+    });
+  }
 
   function openManualModal() {
     setManualName('');
@@ -392,6 +438,41 @@ export default function CreateScreen({ navigation }) {
             ))}
           </View>
         )}
+
+        {/* SCRUM-201: Recommend Me Drinks — disabled when mixer is empty
+            so first-time users see the helper text in the empty state above
+            and the button below as the obvious next step once they add items. */}
+        <TouchableOpacity
+          style={[
+            styles.recommendButton,
+            mixerItems.length === 0 && styles.recommendButtonDisabled,
+          ]}
+          onPress={handleRecommend}
+          disabled={mixerItems.length === 0}
+          accessibilityRole="button"
+          accessibilityLabel="Recommend drinks I can make"
+          accessibilityState={{ disabled: mixerItems.length === 0 }}
+        >
+          <Ionicons
+            name="sparkles"
+            size={16}
+            color={mixerItems.length === 0 ? Colors.textHint : Colors.background}
+            style={{ marginRight: 6 }}
+          />
+          <Text
+            style={[
+              styles.recommendButtonText,
+              mixerItems.length === 0 && styles.recommendButtonTextDisabled,
+            ]}
+          >
+            Recommend Me Drinks
+          </Text>
+        </TouchableOpacity>
+        {mixerItems.length === 0 && (
+          <Text style={styles.recommendHelperText}>
+            Add ingredients to get recommendations
+          </Text>
+        )}
       </View>
 
       {/* ── Quick Style pills ── */}
@@ -527,6 +608,137 @@ export default function CreateScreen({ navigation }) {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── SCRUM-201: Recommendations Modal ──
+          Bottom-sheet showing one of three states:
+            1. Loading  — spinner + helper text
+            2. Empty    — no matches above the 0.4 threshold from the backend
+            3. Results  — vertical scrollable list of drink cards
+          Style language matches manualModalSheet so the two flows feel like
+          siblings. The list uses FlatList for keyboard/perf reasons (a cap
+          of 6 results means it stays small, but it's better hygiene). */}
+      <Modal
+        visible={recommendModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRecommendModalVisible(false)}
+      >
+        <View style={styles.manualModalOverlay}>
+          <View style={styles.recommendModalSheet}>
+            <View style={styles.manualModalHandle} />
+
+            <View style={styles.recommendModalTitleRow}>
+              <Text style={styles.manualModalTitle}>Drinks You Can Make</Text>
+              <TouchableOpacity
+                onPress={() => setRecommendModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close recommendations"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {recommendLoading ? (
+              <View style={styles.recommendStateBox}>
+                <ActivityIndicator color={Colors.accent} size="large" />
+                <Text style={styles.recommendStateText}>
+                  Finding drinks you can make…
+                </Text>
+              </View>
+            ) : recommendations.length === 0 ? (
+              <View style={styles.recommendStateBox}>
+                <Ionicons
+                  name="search-outline"
+                  size={32}
+                  color={Colors.textHint}
+                />
+                <Text style={styles.recommendStateText}>
+                  No close matches found.
+                </Text>
+                <Text style={styles.recommendStateSubtext}>
+                  Try adding more ingredients to your Mixer Space.
+                </Text>
+                <TouchableOpacity
+                  style={styles.recommendCloseButton}
+                  onPress={() => setRecommendModalVisible(false)}
+                >
+                  <Text style={styles.recommendCloseButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={recommendations}
+                keyExtractor={(item) => item.id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.recommendList}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.recommendCard}
+                    onPress={() => handleRecommendCardPress(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View recipe for ${item.name}`}
+                  >
+                    {item.thumbnail ? (
+                      <Image
+                        source={{ uri: item.thumbnail }}
+                        style={styles.recommendCardThumb}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.recommendCardThumb,
+                          styles.recommendCardThumbPlaceholder,
+                        ]}
+                      >
+                        <Ionicons
+                          name="wine-outline"
+                          size={22}
+                          color={Colors.accent}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.recommendCardBody}>
+                      <View style={styles.recommendCardHeaderRow}>
+                        <Text
+                          style={styles.recommendCardName}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <View style={styles.recommendMatchBadge}>
+                          <Text style={styles.recommendMatchBadgeText}>
+                            {Math.round((item.matchPercentage ?? 0) * 100)}%
+                            match
+                          </Text>
+                        </View>
+                      </View>
+                      {item.missingIngredients &&
+                      item.missingIngredients.length > 0 ? (
+                        <Text
+                          style={styles.recommendCardMissing}
+                          numberOfLines={2}
+                        >
+                          Need: {item.missingIngredients.join(', ')}
+                        </Text>
+                      ) : (
+                        <Text style={styles.recommendCardComplete}>
+                          You have everything!
+                        </Text>
+                      )}
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={18}
+                      color={Colors.textHint}
+                    />
+                  </TouchableOpacity>
+                )}
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -983,5 +1195,150 @@ const styles = StyleSheet.create({
   },
   stylePillTextActive: {
     color: Colors.accent,
+  },
+
+  // SCRUM-201: Recommend Me Drinks button — primary action inside the
+  // Mixer Space block, sits beneath the chip row. Outlined accent style
+  // (filled when active) keeps it distinct from the gold-gradient
+  // "Make This Cocktail" CTA which is the screen's hero action.
+  recommendButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.accent,
+  },
+  recommendButtonDisabled: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  recommendButtonText: {
+    ...Typography.labelMedium,
+    color: Colors.background,
+    letterSpacing: 0.4,
+  },
+  recommendButtonTextDisabled: {
+    color: Colors.textHint,
+  },
+  recommendHelperText: {
+    ...Typography.caption,
+    color: Colors.textHint,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+  },
+
+  // SCRUM-201: Recommendations Modal — riffs on manualModalSheet but
+  // taller (loading/empty states need vertical breathing room and the
+  // results list itself wants room to scroll).
+  recommendModalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+    borderTopWidth: 1,
+    borderColor: Colors.accent + '44',
+    maxHeight: '80%',
+  },
+  recommendModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  recommendStateBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xxl,
+    gap: Spacing.sm,
+  },
+  recommendStateText: {
+    ...Typography.bodyMedium,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  recommendStateSubtext: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  recommendCloseButton: {
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  recommendCloseButtonText: {
+    ...Typography.labelMedium,
+    color: Colors.textSecondary,
+  },
+  recommendList: {
+    paddingBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  recommendCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.sm,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
+  recommendCardThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surface,
+  },
+  recommendCardThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recommendCardBody: {
+    flex: 1,
+    gap: 4,
+  },
+  recommendCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  recommendCardName: {
+    ...Typography.bodyMedium,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  recommendMatchBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.accentSubtle,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+  },
+  recommendMatchBadgeText: {
+    ...Typography.labelSmall,
+    color: Colors.accent,
+    fontSize: 11,
+  },
+  recommendCardMissing: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
+  recommendCardComplete: {
+    ...Typography.caption,
+    color: Colors.accent,
+    fontStyle: 'italic',
   },
 });
