@@ -3,7 +3,7 @@
 // Quick Style pills, and "Make This Cocktail" CTA.
 // Design tokens from src/theme/index.js
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import {
@@ -159,15 +159,74 @@ export default function CreateScreen({ navigation }) {
   // SCRUM-198: Mixer Space — read items + actions from the shared MixerContext.
   // The same items appear here on Create regardless of where they were added
   // (manual modal here, or Scan Review on ScanScreen).
-  const { items: mixerItems, addToMixer, removeFromMixer } = useMixer();
+  const { items: mixerItems, addToMixer, removeFromMixer, isFull: isMixerFull, max: mixerMax } = useMixer();
 
   // SCRUM-201: Recommend Me Drinks — modal-driven flow that takes the
   // user's Mixer Space contents and asks the backend (SCRUM-199) for
   // ranked drink suggestions via the recommendFromIngredients() service
   // (SCRUM-200). Three states drive the modal: loading, error/empty, results.
+  //
+  // SCRUM-202 layered on three pieces of polish:
+  //   - cache (item 1): repeat clicks with the same Mixer contents skip the
+  //     network round-trip. Cache invalidates whenever the mixer changes.
+  //   - error states (item 3): network and 5xx errors keep the modal open
+  //     with a "Try Again" button rather than auto-closing. 4xx errors do
+  //     not offer retry (same input would fail again).
+  //   - loading rotation (item 4): three messages cycle at 0s / 2s / 4s so
+  //     the user has reassurance during longer CocktailDB requests.
   const [recommendModalVisible, setRecommendModalVisible] = useState(false);
   const [recommendLoading, setRecommendLoading] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
+  const [recommendError, setRecommendError] = useState(null);     // { message, retryable }
+  const [recommendLoadingStage, setRecommendLoadingStage] = useState(0); // 0 / 1 / 2
+
+  // SCRUM-202 (item 4): rotate loading copy at 2s and 4s thresholds. Refs
+  // hold the timer ids so we can cancel them in the finally block; if we
+  // didn't, a fast response would leave the timers firing and overwriting
+  // post-load state.
+  const loadingTimerRefs = useRef([]);
+  const LOADING_MESSAGES = [
+    'Finding drinks you can make…',
+    'Checking the cocktail database…',
+    'Almost there…',
+  ];
+
+  // SCRUM-202 (item 1): in-memory cache. Map<sorted-ingredients, recommendations[]>.
+  // Lives in a ref so updating the cache doesn't trigger a re-render.
+  const recommendCacheRef = useRef(new Map());
+
+  // SCRUM-202 (item 1): build a stable key from the current mixer contents.
+  // Sorted so order doesn't matter (the engine is order-insensitive too),
+  // lowercased so casing doesn't fragment the cache, joined with a delimiter
+  // unlikely to appear in an ingredient name.
+  const buildCacheKey = useCallback((items) => {
+    return items
+      .map((i) => i.name.trim().toLowerCase())
+      .filter(Boolean)
+      .sort()
+      .join('|');
+  }, []);
+
+  // SCRUM-202 (item 1): clear the cache whenever the Mixer Space contents
+  // change. Per the spec, "cache invalidates when an item is added or
+  // removed." We re-derive the cache key on every recommend call from the
+  // current items, but the spec is explicit — flush stale entries on change.
+  useEffect(() => {
+    recommendCacheRef.current.clear();
+  }, [mixerItems]);
+
+  function clearLoadingTimers() {
+    for (const t of loadingTimerRefs.current) clearTimeout(t);
+    loadingTimerRefs.current = [];
+  }
+
+  function startLoadingRotation() {
+    setRecommendLoadingStage(0);
+    clearLoadingTimers();
+    const t1 = setTimeout(() => setRecommendLoadingStage(1), 2000);
+    const t2 = setTimeout(() => setRecommendLoadingStage(2), 4000);
+    loadingTimerRefs.current = [t1, t2];
+  }
 
   async function handleRecommend() {
     // Defensive: button is disabled when empty, but guard anyway in case
@@ -175,18 +234,42 @@ export default function CreateScreen({ navigation }) {
     if (mixerItems.length === 0) return;
 
     setRecommendModalVisible(true);
-    setRecommendLoading(true);
+    setRecommendError(null);
     setRecommendations([]);
+
+    // SCRUM-202 (item 1): cache hit — render results immediately, skip the
+    // network call. We still set the loading state briefly to false so the
+    // results render path takes over without flashing the empty state.
+    const cacheKey = buildCacheKey(mixerItems);
+    const cached = recommendCacheRef.current.get(cacheKey);
+    if (cached) {
+      setRecommendations(cached);
+      setRecommendLoading(false);
+      return;
+    }
+
+    setRecommendLoading(true);
+    startLoadingRotation();
     try {
       const recs = await recommendFromIngredients(
         mixerItems.map((i) => i.name)
       );
       setRecommendations(recs);
+      // SCRUM-202 (item 1): only cache successful responses — caching errors
+      // would prevent a retry from ever reaching the backend.
+      recommendCacheRef.current.set(cacheKey, recs);
     } catch (err) {
-      // Close the modal first so the Alert isn't stacked behind it
-      setRecommendModalVisible(false);
-      Alert.alert('Error', err.message || 'Could not load recommendations.');
+      // SCRUM-202 (item 3): keep the modal open on retryable errors and let
+      // the user retry without re-entering ingredients. 4xx errors are not
+      // retryable because the same input would fail the same way.
+      const retryable = err.kind === 'network' || err.kind === 'serverError';
+      const userMessage =
+        err.kind === 'serverError'
+          ? 'Something went wrong on our end. Please try again.'
+          : err.message || 'Could not load recommendations.';
+      setRecommendError({ message: userMessage, retryable });
     } finally {
+      clearLoadingTimers();
       setRecommendLoading(false);
     }
   }
@@ -408,7 +491,11 @@ export default function CreateScreen({ navigation }) {
         <View style={styles.mixerSpaceHeader}>
           <Text style={styles.mixerSpaceLabel}>MIXER SPACE</Text>
           {mixerItems.length > 0 && (
-            <Text style={styles.mixerSpaceCount}>{mixerItems.length}</Text>
+            // SCRUM-202: show capacity (e.g. "3 / 8") so users see the cap
+            // before they hit it, not just at the moment of rejection.
+            <Text style={styles.mixerSpaceCount}>
+              {mixerItems.length} / {mixerMax}
+            </Text>
           )}
         </View>
         {mixerItems.length === 0 ? (
@@ -438,7 +525,6 @@ export default function CreateScreen({ navigation }) {
             ))}
           </View>
         )}
-
         {/* SCRUM-201: Recommend Me Drinks — disabled when mixer is empty
             so first-time users see the helper text in the empty state above
             and the button below as the obvious next step once they add items. */}
@@ -471,6 +557,13 @@ export default function CreateScreen({ navigation }) {
         {mixerItems.length === 0 && (
           <Text style={styles.recommendHelperText}>
             Add ingredients to get recommendations
+          </Text>
+        )}
+        {/* SCRUM-202: At-cap helper. Renders below chips when full so the
+            user understands why their next add will be rejected. */}
+        {isMixerFull && (
+          <Text style={styles.mixerSpaceFullHint}>
+            Mixer Space is full ({mixerMax} max). Remove an item to add more.
           </Text>
         )}
       </View>
@@ -586,13 +679,28 @@ export default function CreateScreen({ navigation }) {
                 <Text style={styles.manualCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.manualMixerButton}
+                style={[
+                  styles.manualMixerButton,
+                  isMixerFull && styles.manualMixerButtonDisabled,
+                ]}
                 onPress={handleManualAddToMixer}
-                disabled={manualSubmitting}
+                disabled={manualSubmitting || isMixerFull}
                 accessibilityRole="button"
-                accessibilityLabel="Add ingredient to Mixer Space"
+                accessibilityLabel={
+                  isMixerFull
+                    ? `Mixer is full (${mixerMax} maximum)`
+                    : 'Add ingredient to Mixer Space'
+                }
+                accessibilityState={{ disabled: isMixerFull }}
               >
-                <Text style={styles.manualMixerText}>Add to Mixer</Text>
+                <Text
+                  style={[
+                    styles.manualMixerText,
+                    isMixerFull && styles.manualMixerTextDisabled,
+                  ]}
+                >
+                  {isMixerFull ? 'Mixer Full' : 'Add to Mixer'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.manualConfirmButton}
@@ -645,9 +753,48 @@ export default function CreateScreen({ navigation }) {
             {recommendLoading ? (
               <View style={styles.recommendStateBox}>
                 <ActivityIndicator color={Colors.accent} size="large" />
+                {/* SCRUM-202 (item 4): rotating loading copy. The message
+                    index advances on a setTimeout chain in handleRecommend. */}
                 <Text style={styles.recommendStateText}>
-                  Finding drinks you can make…
+                  {LOADING_MESSAGES[recommendLoadingStage]}
                 </Text>
+              </View>
+            ) : recommendError ? (
+              // SCRUM-202 (item 3): error state. Modal stays open so the user
+              // can retry on network/5xx, or read the backend's 4xx message
+              // and decide what to fix in their Mixer Space.
+              <View style={styles.recommendStateBox}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={32}
+                  color={Colors.accent}
+                />
+                <Text style={styles.recommendStateText}>
+                  {recommendError.message}
+                </Text>
+                <View style={styles.recommendErrorActions}>
+                  <TouchableOpacity
+                    style={styles.recommendCloseButton}
+                    onPress={() => setRecommendModalVisible(false)}
+                  >
+                    <Text style={styles.recommendCloseButtonText}>Close</Text>
+                  </TouchableOpacity>
+                  {recommendError.retryable && (
+                    <TouchableOpacity
+                      style={styles.recommendRetryButton}
+                      onPress={handleRecommend}
+                      accessibilityLabel="Try again"
+                    >
+                      <Ionicons
+                        name="refresh"
+                        size={14}
+                        color={Colors.background}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.recommendRetryButtonText}>Try Again</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ) : recommendations.length === 0 ? (
               <View style={styles.recommendStateBox}>
@@ -1087,6 +1234,18 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
 
+  // SCRUM-202: Disabled state for "Add to Mixer" when at cap. Pulls
+  // chrome down to muted gray so the affordance still reads as a button
+  // but clearly inactive.
+  manualMixerButtonDisabled: {
+    borderColor: Colors.border,
+    backgroundColor: 'transparent',
+    opacity: 0.5,
+  },
+  manualMixerTextDisabled: {
+    color: Colors.textMuted,
+  },
+
   // SCRUM-198: Mixer Space block on Create screen — empty state + chip list
   mixerSpaceBlock: {
     marginHorizontal: Spacing.lg,
@@ -1117,6 +1276,14 @@ const styles = StyleSheet.create({
     ...Typography.bodySmall,
     color: Colors.textHint,
     fontStyle: 'italic',
+  },
+  // SCRUM-202: At-cap helper text inside the Mixer Space block.
+  // Slightly muted but readable — not an error, just a heads-up.
+  mixerSpaceFullHint: {
+    ...Typography.caption,
+    color: Colors.textHint,
+    fontStyle: 'italic',
+    marginTop: Spacing.sm,
   },
   mixerChipRow: {
     flexDirection: 'row',
@@ -1279,6 +1446,29 @@ const styles = StyleSheet.create({
   recommendCloseButtonText: {
     ...Typography.labelMedium,
     color: Colors.textSecondary,
+  },
+
+  // SCRUM-202 (item 3): error actions row — Close + (optional) Try Again.
+  // Try Again only renders for retryable errors (network / 5xx); 4xx errors
+  // are skipped because the same input would fail the same way.
+  recommendErrorActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  recommendRetryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.accent,
+  },
+  recommendRetryButtonText: {
+    ...Typography.labelMedium,
+    color: Colors.background,
   },
   recommendList: {
     paddingBottom: Spacing.lg,
