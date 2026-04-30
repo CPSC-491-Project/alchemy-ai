@@ -158,7 +158,8 @@ function hydrate(llmPicks, catalog, limit) {
   const results = [];
 
   for (const pick of llmPicks) {
-    const id = pick?.id != null ? String(pick.id) : null;
+    const rawId = pick?.id;
+    const id = rawId !== undefined && rawId !== null ? String(rawId) : null;
     if (!id || seen.has(id)) continue;
     const drink = byId.get(id);
     if (!drink) continue; // unknown id — Gemini hallucinated or mistyped
