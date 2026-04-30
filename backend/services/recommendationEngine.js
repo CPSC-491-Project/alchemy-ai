@@ -104,11 +104,17 @@ function rankDrinks(userIngredients, drinks, opts = {}) {
     .map((d) => scoreDrink(d, normalizedUserSet))
     .filter((r) => r !== null)
     .filter((r) => r.matchPercentage >= minMatchPercentage)
+    // SCRUM-209: rank primarily by matchedCount (drinks that use MORE of
+    // the user's ingredients first), tiebreak by matchPercentage.
+    // Previously the priority was reversed, which caused 1-ingredient drinks
+    // ("Vodka neat" at 100% coverage) to outrank 3-ingredient drinks that
+    // actually used 2 of the user's 2 ingredients (Kamikaze at 67%). Users
+    // perceived this as "weak matches first" — exactly opposite of intent.
     .sort((a, b) => {
-      if (b.matchPercentage !== a.matchPercentage) {
-        return b.matchPercentage - a.matchPercentage;
+      if (b.matchedCount !== a.matchedCount) {
+        return b.matchedCount - a.matchedCount;
       }
-      return b.matchedCount - a.matchedCount; // tiebreaker
+      return b.matchPercentage - a.matchPercentage;
     })
     .slice(0, limit);
 }

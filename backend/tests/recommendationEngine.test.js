@@ -171,13 +171,14 @@ describe('recommendDrinks — low-match filter', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Scenario 5: Tie-breaking — equal match%, ranked by matchedCount desc
+// Scenario 5: Primary sort by matchedCount (SCRUM-209: was secondary)
 // ─────────────────────────────────────────────────────────────────────────
-describe('rankDrinks — tiebreaker', () => {
-  it('ranks by matchedCount when matchPercentage ties', () => {
+describe('rankDrinks — primary sort', () => {
+  it('ranks by matchedCount even when matchPercentage favors a smaller drink', () => {
     // Two drinks at exactly 0.5 matchPercentage but different matchedCounts.
     // Two-ingredient drink with 1 match: 1/2 = 0.5
-    // Six-ingredient drink with 3 matches: 3/6 = 0.5 → should rank higher
+    // Six-ingredient drink with 3 matches: 3/6 = 0.5 → ranks higher because
+    // it uses more of the user's ingredients (SCRUM-209 inverted the sort).
     const small = drink('A', 'Small Drink', ['Vodka', 'Soda']);
     const big = drink('B', 'Big Drink', ['Vodka', 'Lime juice', 'Triple sec', 'Sugar', 'Mint', 'Ice']);
 
@@ -186,6 +187,25 @@ describe('rankDrinks — tiebreaker', () => {
     expect(ranked[1].name).toBe('Small Drink');
     expect(ranked[0].matchPercentage).toBe(ranked[1].matchPercentage);
     expect(ranked[0].matchedCount).toBeGreaterThan(ranked[1].matchedCount);
+  });
+
+  // SCRUM-209 regression test — the bug this scenario documents:
+  // Before the sort inversion, a single-ingredient drink at 100% coverage
+  // ("Vodka neat") outranked a multi-ingredient drink that actually used
+  // both of the user's ingredients (Kamikaze at 67%). Users called this
+  // "weak match first." Lock the corrected ranking so it can't regress.
+  it('ranks a 2-of-3 drink above a 1-of-1 drink with the same user input', () => {
+    const vodkaNeat = drink('VN', 'Vodka Neat', ['Vodka']);
+    const kamikaze  = drink('KZ', 'Kamikaze',  ['Vodka', 'Lime juice', 'Triple sec']);
+
+    const ranked = rankDrinks(['vodka', 'lime juice'], [vodkaNeat, kamikaze]);
+    expect(ranked[0].name).toBe('Kamikaze');
+    expect(ranked[0].matchedCount).toBe(2);
+    expect(ranked[1].name).toBe('Vodka Neat');
+    expect(ranked[1].matchedCount).toBe(1);
+    // Sanity: matchPercentage is HIGHER on Vodka Neat — the test verifies
+    // matchedCount overrides that, which is the whole point of the fix.
+    expect(ranked[1].matchPercentage).toBeGreaterThan(ranked[0].matchPercentage);
   });
 });
 
