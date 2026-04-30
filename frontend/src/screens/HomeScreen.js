@@ -29,7 +29,7 @@
  * Author: Allisa Warren
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -52,6 +52,7 @@ import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans'
 import CocktailCard from '../components/CocktailCard';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { getRandomCocktail, filterByIngredient } from '../services/cocktailService';
+import EventBus from '../utils/EventBus';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -130,27 +131,29 @@ export default function HomeScreen({ navigation }) {
   });
 
   // FIX 2: Fetch recommended — N random cocktails in parallel
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchRecommended() {
-      setLoadingRec(true);
-      try {
-        const promises = Array.from({ length: RECOMMENDED_COUNT }, () => getRandomCocktail());
-        const drinks   = await Promise.all(promises);
-        if (cancelled) return;
-        const mapped = drinks.map(mapApiDrink);
-        setRecommended(mapped);
-        setUsingMockRec(false);
-      } catch {
-        // Backend unreachable — keep mock fallback, banner already shows "Mock data"
-        if (!cancelled) setUsingMockRec(true);
-      } finally {
-        if (!cancelled) setLoadingRec(false);
-      }
+  const fetchRecommended = useCallback(async () => {
+    setLoadingRec(true);
+    try {
+      const promises = Array.from({ length: RECOMMENDED_COUNT }, () => getRandomCocktail());
+      const drinks   = await Promise.all(promises);
+      const mapped = drinks.map(mapApiDrink);
+      setRecommended(mapped);
+      setUsingMockRec(false);
+    } catch {
+      // Backend unreachable — keep mock fallback, banner already shows "Mock data"
+      setUsingMockRec(true);
+    } finally {
+      setLoadingRec(false);
     }
-    fetchRecommended();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    fetchRecommended();
+  }, [fetchRecommended]);
+
+  useEffect(() => {
+    return EventBus.subscribe('INGREDIENTS_UPDATED', fetchRecommended);
+  }, [fetchRecommended]);
 
   // FIX 3: Fetch popular — use Whiskey filter as a representative popular set
   // until /api/recommendations is live (see known issue in handoff doc)
