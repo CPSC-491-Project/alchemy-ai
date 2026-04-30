@@ -98,6 +98,18 @@ const PARTY_COCKTAILS = [
 
 const QUICK_STYLES = ['Mocktail', 'Strong', 'Classic', 'Citrus', 'Fresh'];
 
+// SCRUM-208: Fisher–Yates shuffle, returns the first `count` items.
+// Used to pick 3 random "Cocktail of the Day" picks from PARTY_COCKTAILS
+// on each mount (app reload / hot reload re-rolls the selection).
+const pickRandom = (arr, count) => {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+};
+
 // ── Tag Pill ────────────────────────────────────────────────────────────────
 const TagPill = ({ label }) => (
   <View style={styles.tagPill}>
@@ -143,6 +155,11 @@ export default function CreateScreen({ navigation }) {
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeStyle, setActiveStyle] = useState('Strong');
+  // SCRUM-208: pick 3 random cocktails from PARTY_COCKTAILS once per mount.
+  // Lazy initializer ensures the shuffle runs exactly once when the screen
+  // mounts (app reload / hot reload re-rolls); useMemo doesn't guarantee a
+  // single computation per mount.
+  const [featuredCocktails] = useState(() => pickRandom(PARTY_COCKTAILS, 3));
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatRef = useRef(null);
 
@@ -347,25 +364,26 @@ export default function CreateScreen({ navigation }) {
     if (scrollTimer.current) clearTimeout(scrollTimer.current);
     scrollTimer.current = setTimeout(() => {
       const index = Math.round(offset / (CARD_W + Spacing.sm));
-      setActiveIndex(Math.max(0, Math.min(index, PARTY_COCKTAILS.length - 1)));
+      setActiveIndex(Math.max(0, Math.min(index, featuredCocktails.length - 1)));
     }, 50);
-  }, []);
+  }, [featuredCocktails.length]);
 
   const handleStylePress = useCallback(
     (style) => {
       setActiveStyle(style);
-      // Filter to the first cocktail matching this style
-      const idx = PARTY_COCKTAILS.findIndex(
+      // Filter to the first cocktail matching this style (within the random
+      // featured set; falls back to the first card if no match this reload).
+      const idx = featuredCocktails.findIndex(
         (c) => c.style.toLowerCase() === style.toLowerCase()
       );
       if (idx !== -1 && flatRef.current) {
         flatRef.current.scrollToIndex({ index: idx, animated: true });
       }
     },
-    []
+    [featuredCocktails]
   );
 
-  const currentCocktail = PARTY_COCKTAILS[activeIndex];
+  const currentCocktail = featuredCocktails[activeIndex];
 
   // Font guard — must render null until fonts load or web shows blank screen
   if (!fontsLoaded) return null;
@@ -403,7 +421,7 @@ export default function CreateScreen({ navigation }) {
       {/* ── Swipeable card carousel ── */}
       <Animated.FlatList
         ref={flatRef}
-        data={PARTY_COCKTAILS}
+        data={featuredCocktails}
         keyExtractor={(item) => item.id}
         horizontal
         pagingEnabled
@@ -427,7 +445,7 @@ export default function CreateScreen({ navigation }) {
 
       {/* ── Dot indicators ── */}
       <View style={styles.dotsRow}>
-        {PARTY_COCKTAILS.map((_, i) => (
+        {featuredCocktails.map((_, i) => (
           <View
             key={i}
             style={[styles.dot, i === activeIndex && styles.dotActive]}
