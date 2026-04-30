@@ -419,29 +419,32 @@ export default function CreateScreen({ navigation }) {
       </View>
 
       {/* ── Swipeable card carousel ── */}
-      <Animated.FlatList
-        ref={flatRef}
-        data={featuredCocktails}
-        keyExtractor={(item) => item.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={CARD_W + Spacing.sm}
-        decelerationRate="fast"
-        // SCRUM-208: explicit height prevents the carousel from collapsing
-        // when the parent flex layout competes for vertical space.
-        style={styles.carousel}
-        contentContainerStyle={styles.carouselContent}
-        onScroll={(e) => {
-          Animated.event(
-            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: false }
-          )(e);
-          onScroll(e);
-        }}
-        scrollEventThrottle={16}
-        renderItem={({ item }) => <CocktailCard item={item} />}
-      />
+      {/* SCRUM-208: wrap the FlatList in a View with explicit height. On
+          Expo Web, the `style` prop on Animated.FlatList doesn't always
+          apply to the outer wrapper, leaving the carousel at 0 height.
+          A wrapping View gives us a deterministic sized container. */}
+      <View style={styles.carousel}>
+        <Animated.FlatList
+          ref={flatRef}
+          data={featuredCocktails}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={CARD_W + Spacing.sm}
+          decelerationRate="fast"
+          contentContainerStyle={styles.carouselContent}
+          onScroll={(e) => {
+            Animated.event(
+              [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+              { useNativeDriver: false }
+            )(e);
+            onScroll(e);
+          }}
+          scrollEventThrottle={16}
+          renderItem={({ item }) => <CocktailCard item={item} />}
+        />
+      </View>
 
       {/* ── Dot indicators ── */}
       <View style={styles.dotsRow}>
