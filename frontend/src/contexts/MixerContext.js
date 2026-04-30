@@ -36,7 +36,9 @@ async function saveToStorage(newItems) {
       MIXER_STORAGE_KEY,
       JSON.stringify({ items: newItems, savedAt: Date.now() })
     );
-  } catch {}
+  } catch {
+    // storage read/write failure is non-fatal — continue with defaults
+  }
 }
 
 const MixerContext = createContext(null);
@@ -56,7 +58,9 @@ export function MixerProvider({ children }) {
             setItems(stored);
           }
         }
-      } catch {}
+      } catch {
+        // storage read/write failure is non-fatal — continue with defaults
+      }
       setLoading(false);
     }
     restore();
