@@ -31,7 +31,7 @@ const { normalize } = _internal;
 // ── Tuning knobs ───────────────────────────────────────────────────────────
 const MAX_INGREDIENTS = 8;            // SCRUM-202 mixer cap
 const CANDIDATE_POOL = 30;            // top-N by appearance count to fetch in full
-const MIN_MATCH_PERCENTAGE = 0.4;     // drop drinks with worse coverage than this
+const MIN_MATCH_PERCENTAGE = 0.25;    // SCRUM-209: lowered from 0.4 — was filtering too aggressively for users with few ingredients (1-of-3 = 33% was being dropped)
 const DEFAULT_LIMIT = 6;              // results returned to client by default
 const FUZZY_SIMILARITY_THRESHOLD = 0.9; // for Levenshtein-based ingredient match
 

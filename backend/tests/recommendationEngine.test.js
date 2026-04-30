@@ -52,16 +52,12 @@ describe('recommendDrinks — single ingredient', () => {
       return null;
     });
 
-    // With one ingredient against 3-ingredient drinks, matchPercentage = 1/3 = 0.33,
-    // which is below the default 0.4 threshold. So default-threshold output is [];
-    // dropping the threshold to 0 verifies the candidates were retrieved and scored.
-    const all = await recommendDrinks(['vodka'], { minMatchPercentage: 0 });
-    const names = all.map((d) => d.name);
-    expect(names).toContain('Kamikaze');
-    expect(names).toContain('Vodka Martini');
-
+    // SCRUM-209: with the threshold lowered to 0.25, 1-of-3-ingredient drinks
+    // (0.33 coverage) now pass the default filter. So a single-ingredient
+    // query against 3-ingredient drinks should return both candidates.
     const out = await recommendDrinks(['vodka']);
-    expect(out).toEqual([]);
+    const names = out.map((d) => d.name).sort();
+    expect(names).toEqual(['Kamikaze', 'Vodka Martini']);
   });
 });
 
@@ -148,11 +144,11 @@ describe('recommendDrinks — input validation', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Scenario 4: matchPercentage < 0.4 → filtered out
+// Scenario 4: matchPercentage < 0.25 → filtered out (SCRUM-209: was 0.4)
 // ─────────────────────────────────────────────────────────────────────────
 describe('recommendDrinks — low-match filter', () => {
-  it('drops drinks below the 0.4 match threshold', async () => {
-    // Mojito = 5 ingredients, user has 1 (lime → matches Lime). 1/5 = 0.2 < 0.4.
+  it('drops drinks below the 0.25 match threshold', async () => {
+    // Mojito = 5 ingredients, user has 1 (lime → matches Lime). 1/5 = 0.2 < 0.25.
     cocktailService.filterByIngredient.mockResolvedValueOnce([{ id: '11000' }]);
     cocktailService.getCocktailById.mockResolvedValueOnce(MOJITO);
 
@@ -160,8 +156,8 @@ describe('recommendDrinks — low-match filter', () => {
     expect(out.find((d) => d.name === 'Mojito')).toBeUndefined();
   });
 
-  it('keeps drinks at or above the 0.4 match threshold', async () => {
-    // Kamikaze = 3 ingredients, user has 2 (vodka, lime juice). 2/3 ≈ 0.67 ≥ 0.4.
+  it('keeps drinks at or above the 0.25 match threshold', async () => {
+    // Kamikaze = 3 ingredients, user has 2 (vodka, lime juice). 2/3 ≈ 0.67 ≥ 0.25.
     cocktailService.filterByIngredient.mockImplementation(async (ing) => {
       const lower = ing.toLowerCase();
       if (lower === 'vodka' || lower === 'lime juice') return [{ id: '11600' }];
@@ -201,7 +197,7 @@ describe('recommendDrinks — error propagation', () => {
     cocktailService.filterByIngredient.mockImplementation(async (ing) => {
       if (ing === 'unicorn tears') throw new Error('CocktailDB filter returned 404');
       // Vodka and lime juice both return Kamikaze → it appears twice in
-      // the aggregation (and 2/3 = 0.67 ≥ 0.4, so it passes the threshold).
+      // the aggregation (and 2/3 = 0.67 ≥ 0.25, so it passes the threshold).
       return [{ id: '11600' }];
     });
     cocktailService.getCocktailById.mockResolvedValue(KAMIKAZE);
