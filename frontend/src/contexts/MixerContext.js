@@ -19,30 +19,61 @@
 // no-ops when at cap; UIs read `isFull` to gray out their Add-to-Mixer
 // buttons and surface the cap to the user before they tap.
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Exported so UI components can render "X / 8" counters without
 // hard-coding the magic number alongside this module.
 export const MIXER_MAX = 8;
 
+const MIXER_STORAGE_KEY = 'alchemy_mixer_items';
+const MIXER_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Module-level — no component state dependencies, always stable.
+async function saveToStorage(newItems) {
+  try {
+    await AsyncStorage.setItem(
+      MIXER_STORAGE_KEY,
+      JSON.stringify({ items: newItems, savedAt: Date.now() })
+    );
+  } catch {}
+}
+
 const MixerContext = createContext(null);
 
 export function MixerProvider({ children }) {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Restore persisted mixer on mount; ignore expired or corrupt data.
+  useEffect(() => {
+    async function restore() {
+      try {
+        const raw = await AsyncStorage.getItem(MIXER_STORAGE_KEY);
+        if (raw) {
+          const { items: stored, savedAt } = JSON.parse(raw);
+          if (Date.now() - savedAt < MIXER_TTL_MS && Array.isArray(stored)) {
+            setItems(stored);
+          }
+        }
+      } catch {}
+      setLoading(false);
+    }
+    restore();
+  }, []);
 
   const addToMixer = useCallback((item) => {
     if (!item || !item.name) return;
     // Dedupe by case-insensitive name so repeated Add-to-Mixer presses
     // don't pile the same ingredient up multiple times. Cap check happens
-    // inside the updater so we read the latest items length, not a stale
-    // closure value.
+    // against current items so we read the latest length, not a stale value.
     setItems((prev) => {
       if (prev.length >= MIXER_MAX) return prev; // SCRUM-202: silent no-op at cap
       const existing = prev.find(
         (i) => i.name.toLowerCase() === item.name.toLowerCase()
       );
       if (existing) return prev;
-      return [
+      const newItems = [
         ...prev,
         {
           id: `mix-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -52,15 +83,22 @@ export function MixerProvider({ children }) {
           unit: item.unit || null,
         },
       ];
+      saveToStorage(newItems);
+      return newItems;
     });
   }, []);
 
   const removeFromMixer = useCallback((id) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    setItems((prev) => {
+      const filtered = prev.filter((i) => i.id !== id);
+      saveToStorage(filtered);
+      return filtered;
+    });
   }, []);
 
   const clearMixer = useCallback(() => {
     setItems([]);
+    AsyncStorage.removeItem(MIXER_STORAGE_KEY);
   }, []);
 
   const value = {
@@ -70,6 +108,7 @@ export function MixerProvider({ children }) {
     clearMixer,
     isFull: items.length >= MIXER_MAX, // SCRUM-202: UI uses this to disable add buttons
     max: MIXER_MAX,
+    loading,
   };
 
   return <MixerContext.Provider value={value}>{children}</MixerContext.Provider>;
@@ -90,6 +129,7 @@ export function useMixer() {
       clearMixer: () => {},
       isFull: false,
       max: MIXER_MAX,
+      loading: false,
     };
   }
   return ctx;
