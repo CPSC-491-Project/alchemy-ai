@@ -45,6 +45,11 @@ router.post('/', async (req, res) => {
     if (err.status === 400) {
       return res.status(400).json({ error: err.message });
     }
+    if (err.status === 503) {
+      // Catalog not yet warmed (boot race). Engine throws this when it has
+      // no drinks to score against. Surface to the client as retryable.
+      return res.status(503).json({ error: err.message });
+    }
     // eslint-disable-next-line no-console
     console.error('Recommendations error:', err);
     return res.status(500).json({ error: 'Failed to generate recommendations' });

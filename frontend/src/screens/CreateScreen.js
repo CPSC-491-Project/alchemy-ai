@@ -252,7 +252,10 @@ export default function CreateScreen({ navigation }) {
     startLoadingRotation();
     try {
       const recs = await recommendFromIngredients(
-        mixerItems.map((i) => i.name)
+        mixerItems.map((i) => i.name),
+        // SCRUM-209: pass an explicit higher limit so the modal surfaces
+        // more variety (default in the service is 6).
+        12
       );
       setRecommendations(recs);
       // SCRUM-202 (item 1): only cache successful responses — caching errors
