@@ -22,6 +22,7 @@ import {
   FlatList,
   ScrollView,
   ActivityIndicator,
+  Animated,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -64,6 +65,7 @@ export default function SearchScreen({ navigation }) {
 
   const debounceTimer = useRef(null);
   const inputRef      = useRef(null);
+  const shimmerAnim   = useRef(new Animated.Value(0.3)).current;
 
   // ── Load search history from AsyncStorage on mount ───────────────────────
   useEffect(() => {
@@ -123,6 +125,18 @@ export default function SearchScreen({ navigation }) {
     debounceTimer.current = setTimeout(() => runSearch(query), DEBOUNCE_MS);
     return () => clearTimeout(debounceTimer.current);
   }, [query, activeIngredient, runSearch]);
+
+  useEffect(() => {
+    if (!loadingFeatured) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 0.8, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [loadingFeatured, shimmerAnim]);
 
   // ── Ingredient chip filter ────────────────────────────────────────────────
   const handleIngredientTap = async (name) => {
@@ -349,10 +363,10 @@ export default function SearchScreen({ navigation }) {
       {!loading && !userIsSearching && (
         <>
           {loadingFeatured ? (
-            // Still fetching featured — show the dark placeholder boxes
+            // Still fetching featured — animated shimmer placeholders
             <View style={styles.idleGrid}>
               {[0, 1, 2, 3].map((i) => (
-                <View key={i} style={styles.idleCard} />
+                <Animated.View key={i} style={[styles.idleCard, { opacity: shimmerAnim }]} />
               ))}
             </View>
           ) : featured.length > 0 ? (
@@ -370,11 +384,10 @@ export default function SearchScreen({ navigation }) {
               />
             </>
           ) : (
-            // Backend unreachable — show placeholder boxes
-            <View style={styles.idleGrid}>
-              {[0, 1, 2, 3].map((i) => (
-                <View key={i} style={styles.idleCard} />
-              ))}
+            // Backend unreachable — friendly message
+            <View style={styles.featuredUnavailable}>
+              <Text style={styles.featuredUnavailableText}>Featured cocktails unavailable</Text>
+              <Text style={styles.featuredUnavailableHint}>Try searching for a cocktail above</Text>
             </View>
           )}
         </>
@@ -473,4 +486,7 @@ const styles = StyleSheet.create({
   // Placeholder grid (fallback when backend unreachable)
   idleGrid:      { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, gap: Spacing.sm, marginTop: Spacing.sm },
   idleCard:      { width: '47.5%', height: 160, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
+  featuredUnavailable:     { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg, paddingTop: Spacing.xxl },
+  featuredUnavailableText: { ...Typography.bodySmall, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.xs },
+  featuredUnavailableHint: { ...Typography.caption, color: Colors.textHint, textAlign: 'center' },
 });

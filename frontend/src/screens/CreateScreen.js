@@ -156,6 +156,7 @@ export default function CreateScreen({ navigation }) {
   const [manualQuantity, setManualQuantity] = useState('');
   const [manualUnit, setManualUnit] = useState('');
   const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
 
   // SCRUM-198: Mixer Space — read items + actions from the shared MixerContext.
   // The same items appear here on Create regardless of where they were added
@@ -279,12 +280,13 @@ export default function CreateScreen({ navigation }) {
       // SCRUM-202 (item 3): keep the modal open on retryable errors and let
       // the user retry without re-entering ingredients. 4xx errors are not
       // retryable because the same input would fail the same way.
-      const retryable = err.kind === 'network' || err.kind === 'serverError';
+      // Optional chaining guards against non-Error throws (e.g. plain strings).
+      const retryable = err?.kind === 'network' || err?.kind === 'serverError';
       const userMessage =
-        err.kind === 'serverError'
+        err?.kind === 'serverError'
           ? 'Something went wrong on our end. Please try again.'
-          : err.message || 'Could not load recommendations.';
-      setRecommendError({ message: userMessage, retryable });
+          : err?.message || 'Could not load recommendations.';
+      setRecommendError({ message: userMessage, retryable: retryable ?? false });
     } finally {
       clearLoadingTimers();
       setRecommendLoading(false);
@@ -374,6 +376,8 @@ export default function CreateScreen({ navigation }) {
       unit: manualUnit.trim() || null,
     });
     setManualModalVisible(false);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2000);
   }
 
   async function handleManualAdd() {
@@ -1118,6 +1122,12 @@ export default function CreateScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {toastVisible && (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>✓ Added to Mixer Space</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -1919,5 +1929,22 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Colors.accent,
     fontStyle: 'italic',
+  },
+  toast: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#C9A84C',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  toastText: {
+    color: '#C9A84C',
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
 });

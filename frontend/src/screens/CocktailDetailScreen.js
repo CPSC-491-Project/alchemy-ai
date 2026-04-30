@@ -56,6 +56,7 @@ export default function CocktailDetailScreen({ route, navigation }) {
   const [scanResult, setScanResult] = useState(null); // { matched, missing, matchedCount, ingredientCount, matchPercentage }
   const [scanError, setScanError] = useState(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     getCocktailById(id)
@@ -139,11 +140,11 @@ export default function CocktailDetailScreen({ route, navigation }) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* ── Hero Image ── */}
-      {cocktail.thumb ? (
+      {cocktail.thumb && !imageError ? (
         <Image
           source={{ uri: cocktail.thumb }}
           style={styles.hero}
-          onError={() => {}} // suppress network errors silently
+          onError={() => setImageError(true)}
         />
       ) : (
         <View style={[styles.hero, styles.heroFallback]}>
