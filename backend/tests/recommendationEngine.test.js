@@ -144,19 +144,32 @@ describe('recommendDrinks — input validation', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Scenario 4: matchPercentage < 0.25 → filtered out (SCRUM-209: was 0.4)
+// Scenario 4: minMatchPercentage option (SCRUM-209: default is 0 / no filter,
+//             but the option is still honoured when callers pass it explicitly)
 // ─────────────────────────────────────────────────────────────────────────
-describe('recommendDrinks — low-match filter', () => {
-  it('drops drinks below the 0.25 match threshold', async () => {
-    // Mojito = 5 ingredients, user has 1 (lime → matches Lime). 1/5 = 0.2 < 0.25.
+describe('recommendDrinks — minMatchPercentage option', () => {
+  it('returns low-coverage drinks by default (no threshold filter)', async () => {
+    // SCRUM-209: with the default threshold removed, even 1-of-5-ingredient
+    // drinks (Mojito with just lime, 0.2 coverage) are surfaced. Sorting by
+    // matchedCount + the result limit keep the modal useful without a hard
+    // cutoff.
     cocktailService.filterByIngredient.mockResolvedValueOnce([{ id: '11000' }]);
     cocktailService.getCocktailById.mockResolvedValueOnce(MOJITO);
 
     const out = await recommendDrinks(['lime']);
+    expect(out.find((d) => d.name === 'Mojito')).toBeDefined();
+  });
+
+  it('filters drinks below the threshold when option is passed', async () => {
+    // Mojito = 5 ingredients, user has 1 (lime → matches Lime). 1/5 = 0.2 < 0.25.
+    cocktailService.filterByIngredient.mockResolvedValueOnce([{ id: '11000' }]);
+    cocktailService.getCocktailById.mockResolvedValueOnce(MOJITO);
+
+    const out = await recommendDrinks(['lime'], { minMatchPercentage: 0.25 });
     expect(out.find((d) => d.name === 'Mojito')).toBeUndefined();
   });
 
-  it('keeps drinks at or above the 0.25 match threshold', async () => {
+  it('keeps drinks at or above the threshold when option is passed', async () => {
     // Kamikaze = 3 ingredients, user has 2 (vodka, lime juice). 2/3 ≈ 0.67 ≥ 0.25.
     cocktailService.filterByIngredient.mockImplementation(async (ing) => {
       const lower = ing.toLowerCase();
@@ -165,7 +178,7 @@ describe('recommendDrinks — low-match filter', () => {
     });
     cocktailService.getCocktailById.mockResolvedValue(KAMIKAZE);
 
-    const out = await recommendDrinks(['vodka', 'lime juice']);
+    const out = await recommendDrinks(['vodka', 'lime juice'], { minMatchPercentage: 0.25 });
     expect(out.find((d) => d.name === 'Kamikaze')).toBeDefined();
   });
 });
