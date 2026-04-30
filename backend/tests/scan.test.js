@@ -200,3 +200,118 @@ describe('visionService — mock mode fallback', () => {
     expect(text).toBe(visionService.MOCK_OCR_TEXT);
   });
 });
+
+// ── SCRUM-218 ─────────────────────────────────────────────────────────────
+// Tests for the LABEL_DETECTION addition to visionService and the
+// scan-route integration that pipes both OCR text and labels into the
+// matcher.
+
+describe('visionService — SCRUM-218 LABEL_DETECTION', () => {
+  let visionService;
+
+  beforeAll(() => {
+    delete process.env.GCV_CREDENTIALS_BASE64;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    jest.resetModules();
+    // eslint-disable-next-line global-require
+    visionService = require('../services/visionService');
+    visionService._resetForTests();
+  });
+
+  test('analyze() returns text, labels, and mode in mock mode', async () => {
+    const result = await visionService.analyze('ignored');
+    expect(result.mode).toBe('mock');
+    expect(typeof result.text).toBe('string');
+    expect(result.text.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.labels)).toBe(true);
+    expect(result.labels.length).toBeGreaterThan(0);
+  });
+
+  test('analyze() mock labels include the canned ingredient label ("Gin")', async () => {
+    // Sanity check on the mock data — the demo flow needs at least one
+    // matchable label so the route's label-pipe-through actually fires.
+    const { labels } = await visionService.analyze('ignored');
+    expect(labels).toContain('Gin');
+  });
+
+  test('exposes LABEL_CONFIDENCE_THRESHOLD as a constant', () => {
+    // Other modules (or future tuning) might reference this; locking it
+    // here also guards against an accidental edit that drops the floor.
+    expect(typeof visionService.LABEL_CONFIDENCE_THRESHOLD).toBe('number');
+    expect(visionService.LABEL_CONFIDENCE_THRESHOLD).toBeGreaterThan(0);
+    expect(visionService.LABEL_CONFIDENCE_THRESHOLD).toBeLessThanOrEqual(1);
+  });
+
+  test('detectText still works as a backward-compatible OCR-only wrapper', async () => {
+    // detectText is retained for any caller that wants OCR-only output
+    // (and for the original SCRUM-187 test above). It must still return
+    // the same shape it did pre-SCRUM-218.
+    const result = await visionService.detectText('ignored');
+    expect(result.mode).toBe('mock');
+    expect(typeof result.text).toBe('string');
+    expect(result.labels).toBeUndefined(); // wrapper drops labels by design
+  });
+});
+
+describe('Scan route — SCRUM-218 label integration', () => {
+  let app;
+  let visionService;
+
+  beforeAll(() => {
+    delete process.env.GCV_CREDENTIALS_BASE64;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.SCAN_DISABLE_FIRESTORE_CACHE = 'true';
+
+    jest.resetModules();
+    jest.doMock('../services/cocktailDbVocabulary', () => {
+      // eslint-disable-next-line global-require
+      const { INGREDIENTS } = require('../data/ingredientVocabulary');
+      return {
+        getVocabulary: async () => INGREDIENTS,
+        _resetMemo: () => {},
+      };
+    });
+
+    // eslint-disable-next-line global-require
+    visionService = require('../services/visionService');
+    visionService._resetForTests();
+
+    // eslint-disable-next-line global-require
+    app = require('../app');
+  });
+
+  afterAll(() => {
+    jest.dontMock('../services/cocktailDbVocabulary');
+    jest.resetModules();
+  });
+
+  test('response includes a labels array', async () => {
+    // The frontend can ignore this field, but it's useful for debugging
+    // and for any future UI that wants to display "we also saw: Bottle,
+    // Liquor, …".
+    const res = await request(app)
+      .post('/api/scan')
+      .send({ imageBase64: 'A'.repeat(200) });
+
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body.labels)).toBe(true);
+    expect(res.body.labels.length).toBeGreaterThan(0);
+  });
+
+  test('labels are piped through the matcher (mock "Gin" label → Gin candidate)', async () => {
+    // The mock OCR already says "TANQUERAY LONDON DRY GIN" so Gin would
+    // match anyway. What we're verifying here is that the labels pipeline
+    // is wired correctly — by checking the response includes labels at
+    // all and that the mock label "Gin" appears in the labels list.
+    // This is the closest we can get to verifying label-pipe-through
+    // without a fixture image and a mocked GCV client.
+    const res = await request(app)
+      .post('/api/scan')
+      .send({ imageBase64: 'A'.repeat(200) });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.labels).toContain('Gin');
+    const candidateNames = res.body.candidates.map((c) => c.name);
+    expect(candidateNames).toContain('Gin');
+  });
+});

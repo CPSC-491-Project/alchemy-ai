@@ -1,9 +1,9 @@
-// SCRUM-187 / SCRUM-196: /api/scan route.
+// SCRUM-187 / SCRUM-196 / SCRUM-218: /api/scan route.
 //
 // Public endpoint that accepts a base64-encoded image, runs it through
-// Google Cloud Vision TEXT_DETECTION, matches extracted text against
-// the CocktailDB ingredient vocabulary, and returns ranked candidates
-// for the client to confirm (SCRUM-189).
+// Google Cloud Vision (TEXT_DETECTION + LABEL_DETECTION via SCRUM-218),
+// matches both signals against the CocktailDB ingredient vocabulary, and
+// returns ranked candidates for the client to confirm (SCRUM-189).
 //
 // Auth: NONE. Scan is intentionally available to guests (SCRUM-196) so
 // users can try the feature without signing in. If the client sends an
@@ -16,8 +16,10 @@
 // Response (200):
 //   {
 //     rawOcrText: string,                      // full GCV OCR output
-//     candidates: [                            // SCRUM-186 matcher output
-//       { name, confidence, sourceTokens, category }
+//     labels:     string[],                    // SCRUM-218 high-confidence
+//                                              //   LABEL_DETECTION descriptions
+//     candidates: [                            // matcher output, merged from
+//       { name, confidence, sourceTokens, category }   // text + labels
 //     ],
 //     mode: 'live' | 'mock'                    // whether GCV was called
 //   }
@@ -53,14 +55,25 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const { text: rawOcrText, mode } = await visionService.detectText(
+    const { text: rawOcrText, labels, mode } = await visionService.analyze(
       imageBase64
     );
 
-    const vocabulary = await getVocabulary();
-    const candidates = matchIngredients(rawOcrText, vocabulary);
+    // SCRUM-218: merge OCR text + LABEL_DETECTION descriptions into a
+    // single string before running the matcher. Labels are appended on
+    // their own lines so multi-word labels ("Distilled beverage", "Glass
+    // bottle") preserve their phrase structure for the n-gram pass. The
+    // matcher's stopword + threshold logic naturally filters out the
+    // generic noise labels ("Bottle", "Drink") without us needing to
+    // hand-curate which labels to use.
+    const combinedForMatcher = labels && labels.length > 0
+      ? `${rawOcrText}\n${labels.join('\n')}`
+      : rawOcrText;
 
-    return res.json({ rawOcrText, candidates, mode });
+    const vocabulary = await getVocabulary();
+    const candidates = matchIngredients(combinedForMatcher, vocabulary);
+
+    return res.json({ rawOcrText, labels: labels || [], candidates, mode });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Scan error:', err);
