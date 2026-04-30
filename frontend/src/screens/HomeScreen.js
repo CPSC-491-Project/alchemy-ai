@@ -81,6 +81,14 @@ const MOCK_POPULAR = [
 
 const FILTER_CHIPS = ['All', 'Spirits', 'Citrus', 'Classics', 'Mocktails'];
 
+const FILTER_INGREDIENT_MAP = {
+  All:       null,
+  Spirits:   'Vodka',
+  Citrus:    'Lemon',
+  Classics:  'Whiskey',
+  Mocktails: 'Lime juice',
+};
+
 // ---------------------------------------------------------------------------
 // Helper: map a CocktailDB API response item → CocktailCard prop shape
 // CocktailDB returns: { id, name, thumb, category, alcoholic, ... }
@@ -121,6 +129,9 @@ export default function HomeScreen({ navigation }) {
   const [loadingPop, setLoadingPop]         = useState(false);
   const [usingMockRec, setUsingMockRec]     = useState(true);
   const [usingMockPop, setUsingMockPop]     = useState(true);
+  const [filterLoading, setFilterLoading]   = useState(false);
+  const baseRecommended = useRef(MOCK_RECOMMENDED);
+  const basePopular     = useRef(MOCK_POPULAR);
 
   // Fade the ambient orb out as user scrolls — needs JS driver (opacity)
   const glowOpacity = scrollY.interpolate({
@@ -140,6 +151,7 @@ export default function HomeScreen({ navigation }) {
         if (cancelled) return;
         const mapped = drinks.map(mapApiDrink);
         setRecommended(mapped);
+        baseRecommended.current = mapped;
         setUsingMockRec(false);
       } catch {
         // Backend unreachable — keep mock fallback, banner already shows "Mock data"
@@ -163,6 +175,7 @@ export default function HomeScreen({ navigation }) {
         if (cancelled) return;
         const mapped = drinks.slice(0, 6).map(mapApiDrink);
         setPopular(mapped);
+        basePopular.current = mapped;
         setUsingMockPop(false);
       } catch {
         if (!cancelled) setUsingMockPop(true);
@@ -173,6 +186,40 @@ export default function HomeScreen({ navigation }) {
     fetchPopular();
     return () => { cancelled = true; };
   }, []);
+
+  // SCRUM-220: Wire filter chips — re-filter recommended and re-fetch popular
+  useEffect(() => {
+    if (activeFilter === 'All') {
+      setRecommended(baseRecommended.current);
+      setPopular(basePopular.current);
+      return;
+    }
+
+    // Filter recommended carousel locally from the base snapshot
+    const filtered = baseRecommended.current.filter((c) =>
+      c.tags.some((t) => t.toLowerCase().includes(activeFilter.toLowerCase()))
+    );
+    setRecommended(filtered.length > 0 ? filtered : baseRecommended.current);
+
+    // Re-fetch popular carousel for the selected ingredient
+    const ingredient = FILTER_INGREDIENT_MAP[activeFilter];
+    let cancelled = false;
+    setFilterLoading(true);
+    filterByIngredient(ingredient)
+      .then((drinks) => {
+        if (cancelled) return;
+        const mapped = drinks.slice(0, 6).map(mapApiDrink);
+        setPopular(mapped.length > 0 ? mapped : basePopular.current);
+      })
+      .catch(() => {
+        if (!cancelled) setPopular(basePopular.current);
+      })
+      .finally(() => {
+        if (!cancelled) setFilterLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [activeFilter]);
 
   // ── Navigation helpers ────────────────────────────────────────────────
   const goToRecipe  = (item) => navigation.navigate('RecipeDetail', { recipeId: item.id, cocktail: item });
@@ -367,7 +414,7 @@ export default function HomeScreen({ navigation }) {
           onSeeAll={goToPopular}
           style={styles.sectionHeaderSpacing}
         />
-        {loadingPop ? (
+        {loadingPop || filterLoading ? (
           <ActivityIndicator
             color={Colors.accent}
             size="small"
