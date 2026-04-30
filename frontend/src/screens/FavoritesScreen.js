@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,11 @@ import {
   StatusBar,
   Dimensions,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getFavorites, removeFavorite } from '../services/favoritesService';
+import EventBus from '../utils/EventBus';
 import {
   useFonts,
   CormorantGaramond_300Light,
@@ -153,11 +156,45 @@ export default function FavoritesScreen({ navigation }) {
     DMSans_500Medium,
   });
 
-  const [favorites, setFavorites] = useState(MOCK_FAVORITES);
+  const [favorites, setFavorites] = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
-  // Optimistic local remove — replace with API call when backend is ready
-  const handleUnfavorite = useCallback((id) => {
-    setFavorites((prev) => prev.filter((c) => c.id !== id));
+  // Load favorites from backend on mount
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const favs = await getFavorites();
+        if (!cancelled) setFavorites(Array.isArray(favs) ? favs : []);
+      } catch {
+        if (!cancelled) setFavorites([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Refresh whenever a recipe is favorited or unfavorited elsewhere
+  useEffect(() => {
+    return EventBus.subscribe('RECIPE_LIKED', () => {
+      getFavorites()
+        .then((favs) => setFavorites(Array.isArray(favs) ? favs : []))
+        .catch(() => {});
+    });
+  }, []);
+
+  // Optimistic unfavorite — remove locally first, restore if API call fails
+  const handleUnfavorite = useCallback(async (item) => {
+    const apiId = item.cocktailId || item.id;
+    setFavorites((prev) => prev.filter((c) => c.id !== item.id));
+    try {
+      await removeFavorite(apiId);
+    } catch {
+      setFavorites((prev) => [...prev, item]);
+    }
   }, []);
 
   // Tab screens need getParent() to reach root stack screens like CocktailDetail
@@ -169,6 +206,21 @@ export default function FavoritesScreen({ navigation }) {
   const handleExplore = useCallback(() => {
     navigation.navigate('Search');
   }, [navigation]);
+
+  // ── Loading state ──
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, fontsLoaded && styles.fontCormorant]}>
+            Favorites
+          </Text>
+        </View>
+        <ActivityIndicator color={COLORS.gold} size="large" style={{ flex: 1 }} />
+      </SafeAreaView>
+    );
+  }
 
   // ── Empty state ──
   if (favorites.length === 0) {
@@ -224,7 +276,7 @@ export default function FavoritesScreen({ navigation }) {
             item={item}
             fontLoaded={fontsLoaded}
             onPress={() => handleCardPress(item)}
-            onUnfavorite={() => handleUnfavorite(item.id)}
+            onUnfavorite={() => handleUnfavorite(item)}
           />
         )}
       />

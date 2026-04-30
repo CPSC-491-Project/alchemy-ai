@@ -30,6 +30,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { getCocktailById } from '../services/cocktailService';
+import { getFavorites, addFavorite, removeFavorite } from '../services/favoritesService';
+import EventBus from '../utils/EventBus';
 
 // ------------------------------------------------------------------
 // Mock fallback — used only when no route params provided
@@ -148,7 +150,9 @@ export default function RecipeDetailScreen({ navigation, route }) {
   const [isFavorited, setIsFavorited] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
 
-  const handleFavoriteToggle = () => {
+  const handleFavoriteToggle = async () => {
+    const newFavorited = !isFavorited;
+    setIsFavorited(newFavorited); // optimistic toggle
     // Bounce animation
     Animated.sequence([
       Animated.spring(heartScale, {
@@ -164,8 +168,31 @@ export default function RecipeDetailScreen({ navigation, route }) {
         bounciness: 4,
       }),
     ]).start();
-    setIsFavorited((prev) => !prev);
+    const id = cocktailData?.id ?? passedCocktail.id;
+    try {
+      if (newFavorited) {
+        await addFavorite(id, passedCocktail);
+      } else {
+        await removeFavorite(id);
+      }
+      EventBus.emit('RECIPE_LIKED', { id, favorited: newFavorited });
+    } catch {
+      setIsFavorited(!newFavorited); // rollback on failure
+    }
   };
+
+  // ── Load initial favorite state on mount ────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const id = passedCocktail.id;
+    getFavorites()
+      .then((favs) => {
+        if (cancelled) return;
+        setIsFavorited(Array.isArray(favs) && favs.some((f) => (f.cocktailId ?? f.id) === id));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Fetch full detail when passed a partial record ───────────────
   useEffect(() => {
