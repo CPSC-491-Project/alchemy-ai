@@ -2,6 +2,7 @@
   "expo": {
     "name": "Alchemy AI",
     "slug": "alchemy-ai",
+    "scheme": "alchemy-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
