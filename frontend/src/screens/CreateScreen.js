@@ -198,11 +198,10 @@ export default function CreateScreen({ navigation }) {
 
   // SCRUM-210: Vibe Search — natural-language cocktail discovery (Gemini).
   // Distinct from Recommend Me Drinks: this path takes free-text vibe input
-  // and ignores the Mixer Space entirely. Different state bag so the two
-  // flows can coexist (e.g. user has Recommend results open, hits Vibe
-  // Search without losing them).
+  // and ignores the Mixer Space entirely. Results render INLINE below the
+  // Mixer Space (not in a modal) so the user keeps the search bar visible
+  // while reviewing picks.
   const [vibeText, setVibeText] = useState('');
-  const [vibeModalVisible, setVibeModalVisible] = useState(false);
   const [vibeLoading, setVibeLoading] = useState(false);
   const [vibeResults, setVibeResults] = useState([]);
   const [vibeError, setVibeError] = useState(null); // { message, retryable }
@@ -307,10 +306,10 @@ export default function CreateScreen({ navigation }) {
   }
 
   // SCRUM-210: Vibe Search handler — fires when the user submits the vibe
-  // input. Mirrors handleRecommend's loading/error/retry shape so the UI
-  // patterns stay consistent. We do NOT cache here: vibe inputs are open-
-  // ended free text and unlikely to repeat exactly within a session, so
-  // a cache would have low hit rate and high invalidation cost.
+  // input. Results render inline below the Mixer Space, so this only flips
+  // loading/error/results state. We do NOT cache here: vibe inputs are open-
+  // ended free text and unlikely to repeat exactly within a session, so a
+  // cache would have low hit rate and high invalidation cost.
   async function handleVibeSearch(overrideText) {
     const raw = typeof overrideText === 'string' ? overrideText : vibeText;
     const cleaned = (raw ?? '').trim();
@@ -319,7 +318,6 @@ export default function CreateScreen({ navigation }) {
     setVibeSubmitted(cleaned);
     setVibeError(null);
     setVibeResults([]);
-    setVibeModalVisible(true);
     setVibeLoading(true);
 
     try {
@@ -337,10 +335,17 @@ export default function CreateScreen({ navigation }) {
     }
   }
 
-  // SCRUM-210: tap a vibe result card → close modal, navigate to detail.
-  // Same image remap pattern as the recommend flow (thumbnail → image).
+  // SCRUM-210: clear inline results — reset back to the empty initial state
+  // so the user can start a fresh vibe without re-typing into a populated UI.
+  function clearVibeResults() {
+    setVibeResults([]);
+    setVibeError(null);
+    setVibeSubmitted('');
+  }
+
+  // SCRUM-210: tap a vibe result card → navigate to detail. Same image
+  // remap pattern as the recommend flow (thumbnail → image).
   function handleVibeCardPress(drink) {
-    setVibeModalVisible(false);
     const cocktailForDetail = { ...drink, image: drink.thumbnail };
     (navigation.getParent() ?? navigation).navigate('RecipeDetail', {
       cocktail: cocktailForDetail,
@@ -480,55 +485,6 @@ export default function CreateScreen({ navigation }) {
             style={[styles.dot, i === activeIndex && styles.dotActive]}
           />
         ))}
-      </View>
-
-      {/* ── SCRUM-210: Vibe Search bar ──
-          Natural-language cocktail discovery powered by Gemini. Distinct
-          from Recommend Me Drinks: takes a free-text vibe (mood / occasion)
-          and ignores the Mixer Space. Sits above the primary CTA so it's
-          discoverable but doesn't compete with "Make This Cocktail" for
-          screen real estate. */}
-      <View style={styles.vibeSearchRow}>
-        <View style={styles.vibeSearchInputWrap}>
-          <Ionicons
-            name="sparkles-outline"
-            size={16}
-            color={Colors.accent}
-            style={styles.vibeSearchInputIcon}
-          />
-          <TextInput
-            style={styles.vibeSearchInput}
-            placeholder="Find a drink by vibe…"
-            placeholderTextColor={Colors.textHint}
-            value={vibeText}
-            onChangeText={setVibeText}
-            returnKeyType="search"
-            onSubmitEditing={() => handleVibeSearch()}
-            maxLength={300}
-            accessibilityLabel="Vibe Search input"
-          />
-        </View>
-        <TouchableOpacity
-          style={[
-            styles.vibeSearchButton,
-            !vibeText.trim() && styles.vibeSearchButtonDisabled,
-          ]}
-          activeOpacity={0.85}
-          disabled={!vibeText.trim()}
-          onPress={() => handleVibeSearch()}
-          accessibilityLabel="Search by vibe"
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !vibeText.trim() }}
-        >
-          <Text
-            style={[
-              styles.vibeSearchButtonText,
-              !vibeText.trim() && styles.vibeSearchButtonTextDisabled,
-            ]}
-          >
-            Search
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {/* ── Primary CTA: Make This Cocktail ── */}
@@ -701,6 +657,171 @@ export default function CreateScreen({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
+      </View>
+
+      {/* ── SCRUM-210: Vibe Search Block ──
+          Natural-language cocktail discovery (Gemini). Sits below the
+          Mixer Space so it's the next thing the user sees after their
+          ingredients. Distinct from Recommend Me Drinks: free-text vibe
+          input, ignores the Mixer Space.
+
+          Layout: header label + input row + state-conditional results
+          area. Results render INLINE (not in a modal) so the search bar
+          stays visible while the user reviews picks. The result list is
+          a FlatList with bounded maxHeight so it scrolls internally
+          without pushing the rest of the page off-screen on small
+          phones — the page itself isn't currently in a ScrollView. */}
+      <View style={styles.vibeSearchBlock}>
+        <View style={styles.vibeSearchHeader}>
+          <Text style={styles.vibeSearchLabel}>VIBE SEARCH</Text>
+          {(vibeResults.length > 0 || vibeError || vibeSubmitted) && !vibeLoading ? (
+            <TouchableOpacity
+              onPress={clearVibeResults}
+              accessibilityRole="button"
+              accessibilityLabel="Clear vibe search results"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.vibeSearchClearText}>Clear</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={styles.vibeSearchRow}>
+          <View style={styles.vibeSearchInputWrap}>
+            <Ionicons
+              name="sparkles-outline"
+              size={16}
+              color={Colors.accent}
+              style={styles.vibeSearchInputIcon}
+            />
+            <TextInput
+              style={styles.vibeSearchInput}
+              placeholder="Find a drink by vibe…"
+              placeholderTextColor={Colors.textHint}
+              value={vibeText}
+              onChangeText={setVibeText}
+              returnKeyType="search"
+              onSubmitEditing={() => handleVibeSearch()}
+              maxLength={300}
+              accessibilityLabel="Vibe Search input"
+            />
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.vibeSearchButton,
+              (!vibeText.trim() || vibeLoading) && styles.vibeSearchButtonDisabled,
+            ]}
+            activeOpacity={0.85}
+            disabled={!vibeText.trim() || vibeLoading}
+            onPress={() => handleVibeSearch()}
+            accessibilityLabel="Search by vibe"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !vibeText.trim() || vibeLoading }}
+          >
+            <Text
+              style={[
+                styles.vibeSearchButtonText,
+                (!vibeText.trim() || vibeLoading) && styles.vibeSearchButtonTextDisabled,
+              ]}
+            >
+              Search
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* State-conditional results area. Order matters: loading wins,
+            then error, then empty-after-submit, then results. Initial
+            state (no vibe submitted) renders nothing — the input alone is
+            the discovery affordance. */}
+        {vibeLoading ? (
+          <View style={styles.vibeInlineState}>
+            <ActivityIndicator color={Colors.accent} size="small" />
+            <Text style={styles.vibeInlineStateText}>Reading the vibe…</Text>
+          </View>
+        ) : vibeError ? (
+          <View style={styles.vibeInlineState}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={Colors.accent}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.vibeInlineStateText} numberOfLines={2}>
+              {vibeError.message}
+            </Text>
+            {vibeError.retryable ? (
+              <TouchableOpacity
+                onPress={() => handleVibeSearch(vibeSubmitted)}
+                style={styles.vibeInlineRetryButton}
+                accessibilityLabel="Retry vibe search"
+              >
+                <Text style={styles.vibeInlineRetryText}>Retry</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : vibeSubmitted && vibeResults.length === 0 ? (
+          <View style={styles.vibeInlineState}>
+            <Text style={styles.vibeInlineStateText}>
+              No drinks matched “{vibeSubmitted}”. Try rephrasing.
+            </Text>
+          </View>
+        ) : vibeResults.length > 0 ? (
+          <>
+            <Text style={styles.vibeResultsCaption} numberOfLines={1}>
+              Drinks for “{vibeSubmitted}”
+            </Text>
+            <FlatList
+              data={vibeResults}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              style={styles.vibeResultsList}
+              contentContainerStyle={styles.vibeResultsContent}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.vibeResultCard}
+                  onPress={() => handleVibeCardPress(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View recipe for ${item.name}`}
+                >
+                  {item.thumbnail ? (
+                    <Image
+                      source={{ uri: item.thumbnail }}
+                      style={styles.vibeResultThumb}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.vibeResultThumb,
+                        styles.vibeResultThumbPlaceholder,
+                      ]}
+                    >
+                      <Ionicons
+                        name="wine-outline"
+                        size={20}
+                        color={Colors.accent}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.vibeResultBody}>
+                    <Text style={styles.vibeResultName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    {item.rationale ? (
+                      <Text style={styles.vibeResultRationale} numberOfLines={2}>
+                        {item.rationale}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={Colors.textHint}
+                  />
+                </TouchableOpacity>
+              )}
+            />
+          </>
+        ) : null}
       </View>
 
       {/* ── SCRUM-198: Manual Ingredient Add Modal ──
@@ -997,170 +1118,6 @@ export default function CreateScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-
-      {/* ── SCRUM-210: Vibe Search Modal ──
-          Same modal-sheet pattern as the Recommend modal so the two AI
-          discovery flows feel like siblings. Differences from Recommend:
-            - No match-percentage badge (vibe results aren't ingredient-matched).
-            - Each card shows a Gemini-generated rationale below the name.
-            - Header echoes the user's submitted vibe so they remember what
-              they searched for if they switch tasks while loading.
-          Loading copy is single-shot (no rotation) — vibe search hits
-          Gemini once with no fallback chains, so latency variance is low. */}
-      <Modal
-        visible={vibeModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setVibeModalVisible(false)}
-      >
-        <View style={styles.manualModalOverlay}>
-          <View style={styles.recommendModalSheet}>
-            <View style={styles.manualModalHandle} />
-
-            <View style={styles.recommendModalTitleRow}>
-              <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                <Text style={styles.manualModalTitle}>Vibe Search</Text>
-                {vibeSubmitted ? (
-                  <Text
-                    style={styles.vibeModalSubtitle}
-                    numberOfLines={2}
-                    accessibilityLabel={`Searching for ${vibeSubmitted}`}
-                  >
-                    “{vibeSubmitted}”
-                  </Text>
-                ) : null}
-              </View>
-              <TouchableOpacity
-                onPress={() => setVibeModalVisible(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Close vibe search"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close" size={22} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {vibeLoading ? (
-              <View style={styles.recommendStateBox}>
-                <ActivityIndicator color={Colors.accent} size="large" />
-                <Text style={styles.recommendStateText}>
-                  Reading the vibe…
-                </Text>
-              </View>
-            ) : vibeError ? (
-              <View style={styles.recommendStateBox}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={32}
-                  color={Colors.accent}
-                />
-                <Text style={styles.recommendStateText}>
-                  {vibeError.message}
-                </Text>
-                <View style={styles.recommendErrorActions}>
-                  <TouchableOpacity
-                    style={styles.recommendCloseButton}
-                    onPress={() => setVibeModalVisible(false)}
-                  >
-                    <Text style={styles.recommendCloseButtonText}>Close</Text>
-                  </TouchableOpacity>
-                  {vibeError.retryable && (
-                    <TouchableOpacity
-                      style={styles.recommendRetryButton}
-                      onPress={() => handleVibeSearch(vibeSubmitted)}
-                      accessibilityLabel="Try vibe search again"
-                    >
-                      <Ionicons
-                        name="refresh"
-                        size={14}
-                        color={Colors.background}
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text style={styles.recommendRetryButtonText}>Try Again</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ) : vibeResults.length === 0 ? (
-              <View style={styles.recommendStateBox}>
-                <Ionicons
-                  name="search-outline"
-                  size={32}
-                  color={Colors.textHint}
-                />
-                <Text style={styles.recommendStateText}>
-                  No drinks matched that vibe.
-                </Text>
-                <Text style={styles.recommendStateSubtext}>
-                  Try rephrasing — e.g. “refreshing summer” or “cozy and warm.”
-                </Text>
-                <TouchableOpacity
-                  style={styles.recommendCloseButton}
-                  onPress={() => setVibeModalVisible(false)}
-                >
-                  <Text style={styles.recommendCloseButtonText}>Close</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <FlatList
-                data={vibeResults}
-                keyExtractor={(item) => item.id}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.recommendList}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.recommendCard}
-                    onPress={() => handleVibeCardPress(item)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`View recipe for ${item.name}`}
-                  >
-                    {item.thumbnail ? (
-                      <Image
-                        source={{ uri: item.thumbnail }}
-                        style={styles.recommendCardThumb}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.recommendCardThumb,
-                          styles.recommendCardThumbPlaceholder,
-                        ]}
-                      >
-                        <Ionicons
-                          name="wine-outline"
-                          size={22}
-                          color={Colors.accent}
-                        />
-                      </View>
-                    )}
-                    <View style={styles.recommendCardBody}>
-                      <Text
-                        style={styles.recommendCardName}
-                        numberOfLines={1}
-                      >
-                        {item.name}
-                      </Text>
-                      {item.rationale ? (
-                        <Text
-                          style={styles.vibeCardRationale}
-                          numberOfLines={2}
-                        >
-                          {item.rationale}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={Colors.textHint}
-                    />
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -1326,15 +1283,35 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
 
-  // SCRUM-210: Vibe Search row — text input + gold button. Sits between
-  // the dot indicators and the primary CTA so the AI feature is visible
-  // on first scroll without competing with "Make This Cocktail" for the
-  // primary action role. Paddings match secondaryCtaRow for vertical rhythm.
+  // SCRUM-210: Vibe Search Block — sits below Mixer Space. Wrapper styles
+  // mirror mixerSpaceBlock so the two adjacent sections feel consistent.
+  vibeSearchBlock: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+  vibeSearchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  vibeSearchLabel: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 11,
+    color: Colors.textSecondary,
+    letterSpacing: 1.5,
+  },
+  vibeSearchClearText: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 11,
+    color: Colors.accent,
+    letterSpacing: 0.5,
+  },
+
+  // Input row — text input + gold submit button
   vibeSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
     gap: Spacing.sm,
   },
   vibeSearchInputWrap: {
@@ -1380,21 +1357,90 @@ const styles = StyleSheet.create({
     color: Colors.textHint,
   },
 
-  // SCRUM-210: vibe modal extras — subtitle echoing the user's submitted
-  // vibe in the header, and the rationale line under each card.
-  vibeModalSubtitle: {
+  // Inline state row (loading / error / empty) — single line under input
+  vibeInlineState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    paddingHorizontal: 4,
+  },
+  vibeInlineStateText: {
+    flex: 1,
+    fontFamily: 'DMSans_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginLeft: 6,
+  },
+  vibeInlineRetryButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    marginLeft: 8,
+  },
+  vibeInlineRetryText: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 11,
+    color: Colors.accent,
+    letterSpacing: 0.3,
+  },
+
+  // Results header + bounded scrolling list
+  vibeResultsCaption: {
     fontFamily: 'DMSans_400Regular',
     fontStyle: 'italic',
     fontSize: 12,
     color: Colors.textSecondary,
-    marginTop: 2,
+    marginTop: Spacing.sm,
+    marginBottom: 4,
   },
-  vibeCardRationale: {
+  vibeResultsList: {
+    // Bounded so the list scrolls internally rather than pushing the
+    // rest of the page off-screen. ~3 cards visible at once on a typical
+    // phone; rest scroll into view.
+    maxHeight: 280,
+  },
+  vibeResultsContent: {
+    paddingBottom: Spacing.sm,
+  },
+
+  // Compact result card — smaller than the modal cards because it shares
+  // vertical space with the rest of the Create page.
+  vibeResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingRight: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceBorder ?? 'rgba(255,255,255,0.06)',
+  },
+  vibeResultThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surface,
+    marginRight: Spacing.sm,
+  },
+  vibeResultThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vibeResultBody: {
+    flex: 1,
+    paddingRight: Spacing.sm,
+  },
+  vibeResultName: {
+    fontFamily: 'DMSans_500Medium',
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  vibeResultRationale: {
     fontFamily: 'DMSans_400Regular',
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textSecondary,
-    marginTop: 4,
-    lineHeight: 16,
+    marginTop: 2,
+    lineHeight: 14,
   },
 
   // Secondary CTA row (Add Manually + Scan Ingredient) — sit a few lines
