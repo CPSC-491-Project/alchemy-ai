@@ -20,16 +20,21 @@ import {
   TouchableOpacity,
   StyleSheet,
   FlatList,
+  ScrollView,
   ActivityIndicator,
   Platform,
   StatusBar,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import CocktailCard from '../components/CocktailCard';
 import { searchCocktails, filterByIngredient, getRandomCocktail } from '../services/cocktailService';
+
+const HISTORY_KEY = 'alchemy_search_history';
+const HISTORY_MAX = 5;
 
 const INGREDIENTS = [
   'Whiskey', 'Gin', 'Citrus', 'Vermouth', 'Mezcal',
@@ -47,6 +52,7 @@ export default function SearchScreen({ navigation }) {
 
   const [query,            setQuery]            = useState('');
   const [activeIngredient, setActiveIngredient] = useState(null);
+  const [searchHistory,    setSearchHistory]    = useState([]);
   const [results,          setResults]          = useState([]);
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState(null);
@@ -58,6 +64,13 @@ export default function SearchScreen({ navigation }) {
 
   const debounceTimer = useRef(null);
   const inputRef      = useRef(null);
+
+  // ── Load search history from AsyncStorage on mount ───────────────────────
+  useEffect(() => {
+    AsyncStorage.getItem(HISTORY_KEY)
+      .then((json) => { if (json) setSearchHistory(JSON.parse(json)); })
+      .catch(() => {});
+  }, []);
 
   // ── Pre-load featured cocktails on mount ─────────────────────────────────
   useEffect(() => {
@@ -90,6 +103,13 @@ export default function SearchScreen({ navigation }) {
       const data = await searchCocktails(q);
       setResults(data);
       setSearched(true);
+      // Persist to history on successful search
+      const trimmed = q.trim();
+      setSearchHistory((prev) => {
+        const deduped = [trimmed, ...prev.filter((t) => t.toLowerCase() !== trimmed.toLowerCase())].slice(0, HISTORY_MAX);
+        AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(deduped)).catch(() => {});
+        return deduped;
+      });
     } catch {
       setError('Could not reach the server. Please try again.');
     } finally {
@@ -125,6 +145,25 @@ export default function SearchScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const removeFromHistory = (term) => {
+    setSearchHistory((prev) => {
+      const next = prev.filter((t) => t !== term);
+      AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const clearHistory = () => {
+    setSearchHistory([]);
+    AsyncStorage.removeItem(HISTORY_KEY).catch(() => {});
+  };
+
+  const handleHistoryChipPress = (term) => {
+    setActiveIngredient(null);
+    setQuery(term);
+    runSearch(term);
   };
 
   const handleClear = () => {
@@ -209,6 +248,44 @@ export default function SearchScreen({ navigation }) {
           )}
         </View>
       </View>
+
+      {/* ── Recent search history chips ── */}
+      {!query && !activeIngredient && searchHistory.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.historyContent}
+          style={styles.historyBlock}
+        >
+          {searchHistory.map((term) => (
+            <TouchableOpacity
+              key={term}
+              style={styles.historyChip}
+              onPress={() => handleHistoryChipPress(term)}
+              accessibilityRole="button"
+              accessibilityLabel={`Search for ${term}`}
+            >
+              <Ionicons name="time-outline" size={14} color="#C9A84C" />
+              <Text style={styles.historyChipText} numberOfLines={1}>{term}</Text>
+              <TouchableOpacity
+                onPress={() => removeFromHistory(term)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={`Remove ${term} from history`}
+              >
+                <Ionicons name="close-outline" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={styles.historyClearBtn}
+            onPress={clearHistory}
+            accessibilityRole="button"
+            accessibilityLabel="Clear all search history"
+          >
+            <Text style={styles.historyClearText}>Clear all</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
 
       {/* ── Ingredient chips ── */}
       <View style={styles.chipsWrapper}>
@@ -373,6 +450,26 @@ const styles = StyleSheet.create({
   emptyBlock:    { alignItems: 'center', marginTop: Spacing.xxl, gap: Spacing.sm },
   emptyText:     { ...Typography.cardTitle, color: Colors.textSecondary },
   emptySubtext:  { ...Typography.caption, color: Colors.textFaint },
+  // Recent search history
+  historyBlock:     { marginBottom: Spacing.sm },
+  historyContent:   { paddingHorizontal: Spacing.lg, gap: Spacing.xs, alignItems: 'center' },
+  historyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: '#C9A84C',
+    backgroundColor: '#1A1A1A',
+    marginRight: Spacing.xs,
+    maxWidth: 200,
+  },
+  historyChipText:  { fontFamily: 'DMSans_400Regular', fontSize: 13, color: '#F5F5F5', letterSpacing: 0.3, flexShrink: 1 },
+  historyClearBtn:  { paddingHorizontal: Spacing.sm, paddingVertical: 7, justifyContent: 'center' },
+  historyClearText: { fontFamily: 'DMSans_400Regular', fontSize: 12, color: Colors.textSecondary, letterSpacing: 0.3 },
+
   // Placeholder grid (fallback when backend unreachable)
   idleGrid:      { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: Spacing.lg, gap: Spacing.sm, marginTop: Spacing.sm },
   idleCard:      { width: '47.5%', height: 160, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
