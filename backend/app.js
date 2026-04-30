@@ -33,6 +33,10 @@ app.use("/api/me", profileRouter);
 const scanRouter = require("./routes/scan");
 app.use("/api/scan", scanRouter);
 
+// SCRUM-199: Recommendations route — POST /api/recommendations
+const recommendationsRouter = require("./routes/recommendations");
+app.use("/api/recommendations", recommendationsRouter);
+
 // SCRUM-142: 404 catch-all — no route matched
 app.use((req, res) => {
   res.status(404).json({ error: "Not Found", path: req.originalUrl });
