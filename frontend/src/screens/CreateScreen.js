@@ -14,6 +14,7 @@ import {
   FlatList,
   Dimensions,
   StatusBar,
+  ScrollView,
   ImageBackground,
   Image,
   Animated,
@@ -392,6 +393,16 @@ export default function CreateScreen({ navigation }) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
+      {/* SCRUM-208: ScrollView wraps the page body so users can scroll
+          past the carousel to reach Mixer Space and Quick Style on
+          smaller viewports. Modals stay siblings (overlays) and
+          shouldn't scroll with the body. */}
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+
       {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -627,6 +638,8 @@ export default function CreateScreen({ navigation }) {
           ))}
         </View>
       </View>
+
+      </ScrollView>
 
       {/* ── SCRUM-198: Manual Ingredient Add Modal ──
           Bottom-sheet form mirroring CabinetScreen's add modal so the UX
@@ -932,6 +945,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.backgroundParty,
     paddingTop: Platform.OS === 'ios' ? 50 : 32,
+  },
+
+  // SCRUM-208: ScrollView wrapper so the page body scrolls past the tab bar.
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    // Extra room at the bottom so Quick Style isn't hidden behind the tab bar.
+    paddingBottom: 120,
   },
 
   // Header
