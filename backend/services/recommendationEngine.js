@@ -30,7 +30,7 @@ const { normalize } = _internal;
 
 // ── Tuning knobs ───────────────────────────────────────────────────────────
 const MAX_INGREDIENTS = 8;            // SCRUM-202 mixer cap
-const CANDIDATE_POOL = 60;            // SCRUM-209: doubled from 30 — with 1 common ingredient (e.g. vodka), the previous 30 was an arbitrary slice of the ~100 drinks containing it, often missing many short-recipe drinks the user could actually make.
+const CANDIDATE_POOL = 100;           // SCRUM-209: bumped from 60 (originally 30). At 60 we still saw single-ingredient queries returning fewer drinks than the user expected. 100 gives meaningful catalog coverage (~17% of CocktailDB's ~600 drinks per query) without unbounded API cost — getCocktailById calls are parallel via Promise.all so wall-clock time stays under a second.
 const MIN_MATCH_PERCENTAGE = 0;       // SCRUM-209: removed default threshold. Was 0.25 (originally 0.4). With 1 user ingredient, any threshold above 0 cuts out 5+-ingredient drinks (1/5 = 20%), which is most of the catalog. Sort by matchedCount keeps strong matches at the top, and the limit caps total output. Callers can still pass a minMatchPercentage option explicitly if they want stricter filtering.
 const DEFAULT_LIMIT = 6;              // results returned to client by default
 const FUZZY_SIMILARITY_THRESHOLD = 0.9; // for Levenshtein-based ingredient match
