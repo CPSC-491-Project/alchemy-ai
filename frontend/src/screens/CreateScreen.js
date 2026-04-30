@@ -146,6 +146,50 @@ const CocktailCard = ({ item }) => (
   </View>
 );
 
+// SCRUM-208: small "Cocktail of the Day" card. Shown 3-up in a row,
+// each card directly navigates to RecipeDetail on tap. Replaces the
+// single swipeable hero card.
+const CocktailMiniCard = ({ item, onPress }) => (
+  <TouchableOpacity
+    style={styles.miniCard}
+    activeOpacity={0.85}
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={`View details for ${item.name}`}
+  >
+    <Image
+      source={{ uri: item.image }}
+      style={styles.miniCardImage}
+      resizeMode="cover"
+    />
+    <View style={styles.miniCardInfo}>
+      <Text style={styles.miniCardName} numberOfLines={1}>
+        {item.name}
+      </Text>
+      <View style={styles.miniCardTagRow}>
+        {item.tags.slice(0, 2).map((t) => (
+          <View key={t} style={styles.miniTagPill}>
+            <Text style={styles.miniTagPillText} numberOfLines={1}>
+              {t.toUpperCase()}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.miniStarRow}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Ionicons
+            key={i}
+            name="star-outline"
+            size={11}
+            color={Colors.textHint}
+            style={{ marginRight: 2 }}
+          />
+        ))}
+      </View>
+    </View>
+  </TouchableOpacity>
+);
+
 // ── Main Screen ─────────────────────────────────────────────────────────────
 export default function CreateScreen({ navigation }) {
   const [fontsLoaded] = useFonts({
@@ -429,40 +473,20 @@ export default function CreateScreen({ navigation }) {
         <Text style={styles.cotdLabel}>COCKTAIL OF THE DAY</Text>
       </View>
 
-      {/* ── Swipeable card carousel ── */}
-      {/* SCRUM-208: wrap the FlatList in a View with explicit height. On
-          Expo Web, the `style` prop on Animated.FlatList doesn't always
-          apply to the outer wrapper, leaving the carousel at 0 height.
-          A wrapping View gives us a deterministic sized container. */}
-      <View style={styles.carousel}>
-        <Animated.FlatList
-          ref={flatRef}
-          data={featuredCocktails}
-          keyExtractor={(item) => item.id}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={CARD_W + Spacing.sm}
-          decelerationRate="fast"
-          contentContainerStyle={styles.carouselContent}
-          onScroll={(e) => {
-            Animated.event(
-              [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-              { useNativeDriver: false }
-            )(e);
-            onScroll(e);
-          }}
-          scrollEventThrottle={16}
-          renderItem={({ item }) => <CocktailCard item={item} />}
-        />
-      </View>
-
-      {/* ── Dot indicators ── */}
-      <View style={styles.dotsRow}>
-        {featuredCocktails.map((_, i) => (
-          <View
-            key={i}
-            style={[styles.dot, i === activeIndex && styles.dotActive]}
+      {/* ── SCRUM-208: 3-up Cocktail of the Day mini cards ──
+          Static row of 3 random featured cocktails. Each card is
+          tappable and navigates straight to RecipeDetail. Replaces
+          the previous swipe-carousel + dot indicators. */}
+      <View style={styles.miniCardRow}>
+        {featuredCocktails.map((item) => (
+          <CocktailMiniCard
+            key={item.id}
+            item={item}
+            onPress={() =>
+              (navigation.getParent() ?? navigation).navigate('RecipeDetail', {
+                cocktail: item,
+              })
+            }
           />
         ))}
       </View>
@@ -1039,6 +1063,62 @@ const styles = StyleSheet.create({
     ...Typography.label,
     color: Colors.accent,
     letterSpacing: 1.2,
+  },
+
+  // SCRUM-208: 3-up mini card row replacing the swipe carousel.
+  miniCardRow: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  miniCard: {
+    flex: 1,
+    height: 200,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    backgroundColor: Colors.surfaceInput,
+    borderWidth: 1,
+    borderColor: `${Colors.accent}30`,
+  },
+  miniCardImage: {
+    width: '100%',
+    height: 96,
+  },
+  miniCardInfo: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    justifyContent: 'space-between',
+  },
+  miniCardName: {
+    fontFamily: 'CormorantGaramond_300Light',
+    fontSize: 16,
+    color: Colors.textPrimary,
+    letterSpacing: 0.5,
+  },
+  miniCardTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginVertical: 2,
+  },
+  miniTagPill: {
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  miniTagPillText: {
+    fontSize: 9,
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    fontFamily: 'DMSans_500Medium',
+  },
+  miniStarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   featuredCard: {
     width: CARD_W,
