@@ -23,6 +23,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
@@ -91,6 +93,25 @@ export default function CocktailDetailScreen({ route, navigation }) {
     setScanModalOpen(false);
     setScanResult(null);
     setScanError(null);
+  }
+
+  // SCRUM-209: Mirrors handleAddAllToCabinet from RecipeDetailScreen so the
+  // Search/Favorites flow exposes the same action as the Home/Create flow.
+  // Currently a confirmation stub — full persistence to /api/cabinet is
+  // tracked separately. Web and native paths use platform-appropriate alerts.
+  function handleAddAllToCabinet() {
+    if (!cocktail) return;
+    const names = (cocktail.ingredients || [])
+      .map((i) => i.name)
+      .filter(Boolean)
+      .join(', ');
+    const message = names || cocktail.name;
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      window.alert('Added to Cabinet\n' + message);
+    } else {
+      Alert.alert('Added to Cabinet', message);
+    }
   }
 
   // FIX: Font guard — must be AFTER all hooks, BEFORE any JSX return
@@ -180,6 +201,17 @@ export default function CocktailDetailScreen({ route, navigation }) {
             <Text style={styles.instructions}>{cocktail.instructions}</Text>
           </>
         )}
+
+        {/* ── SCRUM-209: Add All to Cabinet ── */}
+        <TouchableOpacity
+          style={styles.ctaButton}
+          onPress={handleAddAllToCabinet}
+          accessibilityRole="button"
+          accessibilityLabel="Add all ingredients to cabinet"
+          activeOpacity={0.85}
+        >
+          <Text style={styles.ctaLabel}>Add All to Cabinet</Text>
+        </TouchableOpacity>
 
         {/* ── SCRUM-205: Scan My Cabinet ── */}
         <TouchableOpacity
@@ -350,6 +382,22 @@ const styles = StyleSheet.create({
   scanButtonText:   {
     ...Typography.button,
     color: Colors.accent,
+  },
+
+  // ── SCRUM-209: Add All to Cabinet button (mirrors RecipeDetailScreen.ctaButton) ──
+  ctaButton:        {
+    marginTop: Spacing.lg,
+    backgroundColor: Colors.accent,
+    paddingVertical: 16,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaLabel:         {
+    ...Typography.body,
+    color: Colors.background,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 
   // ── SCRUM-205: Scan result modal ───────────────────────────────────────────

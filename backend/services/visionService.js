@@ -1,9 +1,29 @@
-// SCRUM-187: Google Cloud Vision OCR wrapper.
+// SCRUM-187 / SCRUM-218: Google Cloud Vision wrapper.
 //
-// Provides a single `detectText(imageBase64)` function that calls the GCV
-// TEXT_DETECTION API, with a MOCK mode fallback so the rest of the scan
-// pipeline (route + matcher) is testable end-to-end without real GCV
-// credentials.
+// Provides `analyze(imageBase64)` that runs both TEXT_DETECTION and
+// LABEL_DETECTION in a single Vision API request, plus the original
+// `detectText(imageBase64)` retained as a thin wrapper for backward
+// compatibility. Mock-mode fallback still works without GCV credentials so
+// the rest of the scan pipeline (route + matcher) is testable end-to-end.
+//
+// Why both features in one request (SCRUM-218)
+// --------------------------------------------
+// TEXT_DETECTION alone misses two things:
+//   1. Brand-forward bottles where OCR captures the brand but the matcher's
+//      vocab has no brand entries (Grey Goose, Patrón, etc.) — partly fixed
+//      by the brand-pass map but ultimately limited to the brands we hand-
+//      curate.
+//   2. Unbranded items with no readable text — fresh fruit, herbs, raw
+//      ingredients. Pure OCR returns nothing useful.
+// LABEL_DETECTION reads image content directly and returns descriptive
+// labels: "Orange" / "Citrus" / "Fruit" for an orange, "Distilled beverage"
+// / "Vodka" / "Bottle" for a vodka bottle. Both features piped through the
+// matcher mean we recognize a wider range of inputs without changing the
+// matcher itself.
+//
+// Cost: this is one Vision API request with two features attached, billed
+// as two separate feature units. Roughly 2× the per-request cost of pure
+// TEXT_DETECTION but only one round-trip and within the same quota envelope.
 //
 // Credential sources (checked in this order):
 //   1. GCV_CREDENTIALS_BASE64 — base64-encoded service-account JSON.
@@ -12,17 +32,17 @@
 //   2. GOOGLE_APPLICATION_CREDENTIALS — file path to service-account JSON.
 //      Used by GCV's default lookup; convenient for local `gcloud auth
 //      application-default login` setups.
-//   3. Neither present → MOCK mode. Returns canned label text so the
+//   3. Neither present → MOCK mode. Returns canned text + labels so the
 //      matcher + route can be exercised end-to-end without GCP setup.
 //
-// The @google-cloud/vision package is lazy-required inside getClient() so
-// the module still loads (and tests still run) if the package isn't
+// The @google-cloud/vision package is lazy-required inside resolveClient()
+// so the module still loads (and tests still run) if the package isn't
 // installed or fails to initialize.
 
-// ── Mock OCR output ──────────────────────────────────────────────────────
-// A realistic-looking bottle label. When piped through the SCRUM-186
-// matcher it produces "Gin" as the top candidate, so the full scan flow
-// is demonstrable in mock mode.
+// ── Mock OCR + label output ──────────────────────────────────────────────
+// The OCR text is a realistic-looking Tanqueray label. When piped through
+// the SCRUM-186 matcher it produces "Gin" as the top candidate, so the
+// full scan flow is demonstrable in mock mode without GCP credentials.
 const MOCK_OCR_TEXT = [
   'TANQUERAY',
   'LONDON DRY GIN',
@@ -31,6 +51,32 @@ const MOCK_OCR_TEXT = [
   'IMPORTED',
   'ENJOY RESPONSIBLY',
 ].join('\n');
+
+// SCRUM-218: canned labels demonstrate the LABEL_DETECTION pathway in mock
+// mode. Real GCV output for a gin bottle includes overlapping descriptors
+// like "Distilled beverage" / "Liquor" / "Bottle" plus the category itself.
+// We include both the noise (which the matcher correctly ignores) and the
+// signal (which the matcher matches) to make the test realistic.
+const MOCK_LABELS = [
+  'Bottle',
+  'Distilled beverage',
+  'Liquor',
+  'Gin',
+  'Glass bottle',
+  'Drink',
+];
+
+// LABEL_DETECTION returns annotations with a `score` (0..1). Anything below
+// this threshold is treated as too speculative to feed into the matcher —
+// at lower scores Vision tends to return very generic categories ("Object",
+// "Product") that just generate matcher noise.
+const LABEL_CONFIDENCE_THRESHOLD = 0.7;
+
+// Cap on the number of label annotations we ask GCV to return. The default
+// is unlimited and the API tends to return tens of low-confidence labels
+// for any image. 15 is plenty of headroom above what we'll actually use
+// after the threshold filter.
+const MAX_LABEL_RESULTS = 15;
 
 // ── Internal state ───────────────────────────────────────────────────────
 let client = null;
@@ -86,36 +132,70 @@ function resolveClient() {
 }
 
 /**
- * Run text detection on a base64-encoded image.
+ * Run TEXT_DETECTION + LABEL_DETECTION on an image in a single Vision
+ * request. SCRUM-218 — added in place of the previous textDetection-only
+ * implementation to also recognize unbranded items (fresh fruit, herbs)
+ * and brand-forward bottles where OCR + brand-map alone falls short.
+ *
  * @param {string} imageBase64 - Raw base64 string (no data: URI prefix).
- * @returns {Promise<{ text: string, mode: 'live' | 'mock' }>}
+ * @returns {Promise<{ text: string, labels: string[], mode: 'live' | 'mock' }>}
+ *   text   — concatenated OCR output.
+ *   labels — descriptions of LABEL_DETECTION annotations whose confidence
+ *            is at or above LABEL_CONFIDENCE_THRESHOLD, in GCV's returned
+ *            order (highest confidence first).
+ *   mode   — 'live' if the request hit GCV, 'mock' if creds weren't set.
  */
-async function detectText(imageBase64) {
+async function analyze(imageBase64) {
   const c = resolveClient();
 
   if (!c) {
-    // Mock mode — ignore the input image, return canned text.
-    return { text: MOCK_OCR_TEXT, mode: 'mock' };
+    return {
+      text: MOCK_OCR_TEXT,
+      labels: [...MOCK_LABELS],
+      mode: 'mock',
+    };
   }
 
-  const [result] = await c.textDetection({
+  // annotateImage with multiple features = single billed request,
+  // single round-trip. Cheaper and faster than two separate calls.
+  const [result] = await c.annotateImage({
     image: { content: imageBase64 },
+    features: [
+      { type: 'TEXT_DETECTION' },
+      { type: 'LABEL_DETECTION', maxResults: MAX_LABEL_RESULTS },
+    ],
   });
 
-  // GCV returns either `fullTextAnnotation.text` (the reconstructed
-  // paragraph form) or `textAnnotations[0].description` (the same thing,
-  // alternate shape). Prefer fullTextAnnotation when present.
   const text =
     result?.fullTextAnnotation?.text ||
     result?.textAnnotations?.[0]?.description ||
     '';
 
-  return { text, mode: 'live' };
+  const labels = (result?.labelAnnotations || [])
+    .filter((a) => typeof a.score === 'number' && a.score >= LABEL_CONFIDENCE_THRESHOLD)
+    .map((a) => a.description)
+    .filter((d) => typeof d === 'string' && d.length > 0);
+
+  return { text, labels, mode: 'live' };
+}
+
+/**
+ * Backward-compatible OCR-only wrapper. Retained because (a) the existing
+ * scan.test.js exercises `detectText` directly and (b) keeping the smaller
+ * surface area available makes it cheap to revert to OCR-only if the label
+ * pathway ever becomes a problem.
+ *
+ * @param {string} imageBase64
+ * @returns {Promise<{ text: string, mode: 'live' | 'mock' }>}
+ */
+async function detectText(imageBase64) {
+  const { text, mode } = await analyze(imageBase64);
+  return { text, mode };
 }
 
 function getMode() {
   // Calling resolveClient() first ensures we report the actual mode, not
-  // 'uninitialized', even if detectText hasn't been called yet.
+  // 'uninitialized', even if analyze/detectText hasn't been called yet.
   resolveClient();
   return resolvedMode;
 }
@@ -127,8 +207,11 @@ function _resetForTests() {
 }
 
 module.exports = {
+  analyze,
   detectText,
   getMode,
   MOCK_OCR_TEXT,
+  MOCK_LABELS,
+  LABEL_CONFIDENCE_THRESHOLD,
   _resetForTests,
 };

@@ -18,6 +18,7 @@ import { MixerProvider }    from '../contexts/MixerContext';
 import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import CabinetScreen from '../screens/CabinetScreen';
 import ScanScreen from '../screens/ScanScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -29,8 +30,9 @@ export default function RootNavigator({ user }) {
           screenOptions={{ headerShown: false, animation: 'fade' }}
           initialRouteName={user ? 'MainTabs' : 'Login'}
         >
-          <Stack.Screen name="Login"     component={LoginScreen} />
-          <Stack.Screen name="MainTabs"  component={TabNavigator} />
+          <Stack.Screen name="Login"          component={LoginScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="MainTabs"       component={TabNavigator} />
           <Stack.Screen
             name="CocktailDetail"
             component={CocktailDetailScreen}

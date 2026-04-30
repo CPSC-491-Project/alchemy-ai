@@ -37,6 +37,14 @@ app.use("/api/scan", scanRouter);
 const recommendationsRouter = require("./routes/recommendations");
 app.use("/api/recommendations", recommendationsRouter);
 
+// SCRUM-209 (extended): Admin route — catalog status + manual refresh
+const adminRouter = require("./routes/admin");
+app.use("/api/admin", adminRouter);
+
+// SCRUM-210: Vibe Search route — POST /api/vibe-search (Gemini-powered)
+const vibeSearchRouter = require("./routes/vibeSearch");
+app.use("/api/vibe-search", vibeSearchRouter);
+
 // SCRUM-142: 404 catch-all — no route matched
 app.use((req, res) => {
   res.status(404).json({ error: "Not Found", path: req.originalUrl });
