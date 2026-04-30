@@ -23,6 +23,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -205,6 +206,11 @@ export default function CreateScreen({ navigation }) {
   // mounts (app reload / hot reload re-rolls); useMemo doesn't guarantee a
   // single computation per mount.
   const [featuredCocktails] = useState(() => pickRandom(PARTY_COCKTAILS, 3));
+  // SCRUM-208: on Expo Web, flex:1 doesn't always propagate a height through
+  // React Navigation's container chain, so the outer ScrollView never gets a
+  // constrained height and won't engage. Bind the screen height explicitly on
+  // web. useWindowDimensions updates on viewport resize.
+  const { height: viewportHeight } = useWindowDimensions();
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatRef = useRef(null);
 
@@ -434,7 +440,13 @@ export default function CreateScreen({ navigation }) {
   if (!fontsLoaded) return null;
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        // SCRUM-208: web-only height bind — see comment on viewportHeight.
+        Platform.OS === 'web' && { height: viewportHeight },
+      ]}
+    >
       <StatusBar barStyle="light-content" />
 
       {/* SCRUM-208: ScrollView wraps the page body so users can scroll
