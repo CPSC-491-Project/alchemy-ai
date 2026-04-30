@@ -1,4 +1,4 @@
-// SCRUM-199: Recommendation engine.
+// SCRUM-209: Recommendation engine — catalog-backed.
 //
 // Given a list of user ingredients (the Mixer Space contents), returns a
 // ranked array of cocktails the user can make (or nearly make).
@@ -6,32 +6,31 @@
 // Algorithm:
 //   1. Normalize input (uses normalize() from ingredientMatcher to stay
 //      consistent with the OCR pipeline — same canonicalization rules).
-//   2. Promise.all of cocktailService.filterByIngredient() per input.
-//   3. Aggregate by frequency: drinkId → appearance count.
-//   4. Take top CANDIDATE_POOL by appearance count, fetch full details
-//      via cocktailService.getCocktailById() in parallel.
-//   5. Score each: matchedCount = drink ingredients ∩ user ingredients
+//   2. Pull all drinks from the in-memory cocktailCatalog.
+//   3. Score each: matchedCount = drink ingredients ∩ user ingredients
 //      (case- and punctuation-insensitive, with Levenshtein tolerance for
 //      minor variants); matchPercentage = matchedCount / totalIngredients.
-//   6. Filter matchPercentage >= MIN_MATCH_PERCENTAGE.
-//   7. Sort by matchPercentage desc, matchedCount desc as tiebreaker.
-//   8. Return top `limit` results (default DEFAULT_LIMIT).
+//   4. Drop drinks with zero matches (the catalog has ~600 drinks; only
+//      ones containing at least one user ingredient are useful results).
+//   5. Filter matchPercentage >= MIN_MATCH_PERCENTAGE.
+//   6. Sort by matchedCount desc, matchPercentage desc as tiebreaker.
+//   7. Return top `limit` results.
 //
-// Why the two-pass design (filter → lookup): filter.php returns minimal
-// payloads (no ingredient lists) but is cheap. lookup.php returns full
-// drink details but costs one round-trip per drink. By pre-ranking with
-// filter.php and only fetching full details for the top CANDIDATE_POOL,
-// we keep CocktailDB calls bounded at userIngredients + CANDIDATE_POOL.
+// The previous architecture (filter.php → lookup.php → score) is gone.
+// It hit a CocktailDB rate limit on single-ingredient queries: ~150
+// parallel lookup.php calls returned HTTP 200 + {drinks: null} for most
+// of them, so a "vodka" query returned 1 drink instead of 100+. Loading
+// the full catalog up-front (see cocktailCatalog.js) sidesteps that
+// entirely and removes the CANDIDATE_POOL tuning knob.
 
 const levenshtein = require('fast-levenshtein');
-const cocktailService = require('./cocktailService');
+const cocktailCatalog = require('./cocktailCatalog');
 const { _internal } = require('./ingredientMatcher');
 const { normalize } = _internal;
 
 // ── Tuning knobs ───────────────────────────────────────────────────────────
 const MAX_INGREDIENTS = 8;            // SCRUM-202 mixer cap
-const CANDIDATE_POOL = 600;           // SCRUM-209: effectively uncapped. CocktailDB has ~600 drinks total, so 600 means "score every drink that contains at least one user ingredient." Per-query actual fetch is bounded by filter.php's union (~100 for single common ingredients, up to ~300 for 3-ingredient queries). Tradeoff: each candidate triggers one getCocktailById call; large pools can take 1–3 seconds wall-clock even with Promise.all parallelism, and may brush rate limits on CocktailDB's free tier under demo load. Dial back if latency or rate-limiting becomes an issue.
-const MIN_MATCH_PERCENTAGE = 0;       // SCRUM-209: removed default threshold. Was 0.25 (originally 0.4). With 1 user ingredient, any threshold above 0 cuts out 5+-ingredient drinks (1/5 = 20%), which is most of the catalog. Sort by matchedCount keeps strong matches at the top, and the limit caps total output. Callers can still pass a minMatchPercentage option explicitly if they want stricter filtering.
+const MIN_MATCH_PERCENTAGE = 0;       // SCRUM-209: no default threshold (sort + limit do the trimming)
 const DEFAULT_LIMIT = 6;              // results returned to client by default
 const FUZZY_SIMILARITY_THRESHOLD = 0.9; // for Levenshtein-based ingredient match
 
@@ -58,7 +57,7 @@ function ingredientIsInUserSet(drinkIngredient, normalizedUserSet) {
   return false;
 }
 
-// Score a single fully-fetched drink against the normalized user ingredient set.
+// Score a single drink against the normalized user ingredient set.
 function scoreDrink(drink, normalizedUserSet) {
   const drinkIngredients = (drink.ingredients ?? []).map((ing) => ing.name);
   const ingredientCount = drinkIngredients.length;
@@ -93,7 +92,7 @@ function scoreDrink(drink, normalizedUserSet) {
 // ── Public: rank pre-fetched drinks against user ingredients ──────────────
 //
 // Pure function. No I/O. Used internally by recommendDrinks and directly
-// by tests that want to verify scoring logic without mocking the network.
+// by tests that want to verify scoring logic without setting up the catalog.
 function rankDrinks(userIngredients, drinks, opts = {}) {
   const { limit = DEFAULT_LIMIT, minMatchPercentage = MIN_MATCH_PERCENTAGE } = opts;
   const normalizedUserSet = new Set(
@@ -103,6 +102,13 @@ function rankDrinks(userIngredients, drinks, opts = {}) {
   return drinks
     .map((d) => scoreDrink(d, normalizedUserSet))
     .filter((r) => r !== null)
+    // SCRUM-209 (catalog migration): when scoring against the full ~600
+    // drink catalog, most drinks share zero ingredients with the user's
+    // mixer. Drop them so the limit isn't burned on irrelevant results.
+    // The previous filter.php-based pipeline got this for free because
+    // candidates were already pre-filtered to drinks containing >=1
+    // user ingredient.
+    .filter((r) => r.matchedCount > 0)
     .filter((r) => r.matchPercentage >= minMatchPercentage)
     // SCRUM-209: rank primarily by matchedCount (drinks that use MORE of
     // the user's ingredients first), tiebreak by matchPercentage.
@@ -119,11 +125,15 @@ function rankDrinks(userIngredients, drinks, opts = {}) {
     .slice(0, limit);
 }
 
-// ── Public: full pipeline, hits CocktailDB ────────────────────────────────
+// ── Public: full pipeline, reads from the in-memory catalog ───────────────
 //
-// Throws on cap violation or on upstream CocktailDB failures. The route
-// catches and translates to HTTP 400/500 — keeping the engine throw-based
-// makes it composable for non-HTTP callers (e.g. future scheduled jobs).
+// `async` is preserved for caller compatibility (the route awaits it) and
+// to keep the door open for future I/O (e.g. logging recommend events to
+// Firestore for personalization). The function body itself is I/O-free.
+//
+// Throws:
+//   - status: 400 on invalid input (validation)
+//   - status: 503 if the catalog hasn't loaded yet (boot race)
 async function recommendDrinks(ingredients, opts = {}) {
   if (!Array.isArray(ingredients)) {
     throw Object.assign(new Error('ingredients must be an array'), { status: 400 });
@@ -149,54 +159,28 @@ async function recommendDrinks(ingredients, opts = {}) {
     );
   }
 
-  // Step 1: filter.php per ingredient. Per-ingredient failures (404, empty
-  // results, etc.) are absorbed so one bad ingredient name doesn't kill
-  // the whole request. Upstream-wide failures (e.g. CocktailDB down) are
-  // not caught here and propagate up to the route's 500 handler.
-  const filterResults = await Promise.all(
-    cleaned.map(async (ing) => {
-      try {
-        return await cocktailService.filterByIngredient(ing);
-      } catch {
-        return [];
-      }
-    })
-  );
-
-  // Step 2: aggregate appearance counts.
-  const appearances = new Map(); // drinkId → count
-  for (const drinks of filterResults) {
-    for (const drink of drinks) {
-      if (!drink?.id) continue;
-      appearances.set(drink.id, (appearances.get(drink.id) ?? 0) + 1);
-    }
+  const drinks = cocktailCatalog.getDrinks();
+  if (drinks.length === 0) {
+    // Boot race: server is up but the initial catalog load hasn't completed
+    // (or it failed). 503 + retry messaging is the honest answer.
+    throw Object.assign(
+      new Error('Cocktail catalog is not ready yet. Please try again in a moment.'),
+      { status: 503 }
+    );
   }
-  if (appearances.size === 0) return [];
 
-  // Step 3: pick top CANDIDATE_POOL by frequency, fetch full details.
-  const topIds = [...appearances.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, CANDIDATE_POOL)
-    .map(([id]) => id);
-
-  const fullDrinks = await Promise.all(
-    topIds.map((id) => cocktailService.getCocktailById(id))
-  );
-
-  // Step 4: score, filter, rank.
-  return rankDrinks(cleaned, fullDrinks.filter(Boolean), opts);
+  return rankDrinks(cleaned, drinks, opts);
 }
 
 module.exports = {
   recommendDrinks,
-  // Exported for direct testing without mocking the network:
+  // Exported for direct testing without setting up the catalog:
   _internal: {
     rankDrinks,
     scoreDrink,
     ingredientIsInUserSet,
     similarity,
     MAX_INGREDIENTS,
-    CANDIDATE_POOL,
     MIN_MATCH_PERCENTAGE,
     DEFAULT_LIMIT,
   },
