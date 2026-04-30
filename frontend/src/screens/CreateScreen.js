@@ -32,6 +32,10 @@ import { useMixer } from '../contexts/MixerContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CARD_W = SCREEN_W - Spacing.lg * 2;
+// SCRUM-208: explicit card height shared between the FlatList container and
+// the card itself. Without this, the horizontal carousel can collapse on
+// certain devices/layouts and the card gets clipped to a thin sliver.
+const CARD_H = SCREEN_H * 0.36;
 
 // ── Mock cocktails ──────────────────────────────────────────────────────────
 const PARTY_COCKTAILS = [
@@ -391,6 +395,11 @@ export default function CreateScreen({ navigation }) {
         <Text style={styles.partyLine2}>MODE</Text>
       </View>
 
+      {/* ── SCRUM-208: section label above the carousel ── */}
+      <View style={styles.cotdLabelRow}>
+        <Text style={styles.cotdLabel}>COCKTAIL OF THE DAY</Text>
+      </View>
+
       {/* ── Swipeable card carousel ── */}
       <Animated.FlatList
         ref={flatRef}
@@ -401,6 +410,9 @@ export default function CreateScreen({ navigation }) {
         showsHorizontalScrollIndicator={false}
         snapToInterval={CARD_W + Spacing.sm}
         decelerationRate="fast"
+        // SCRUM-208: explicit height prevents the carousel from collapsing
+        // when the parent flex layout competes for vertical space.
+        style={styles.carousel}
         contentContainerStyle={styles.carouselContent}
         onScroll={(e) => {
           Animated.event(
@@ -966,13 +978,28 @@ const styles = StyleSheet.create({
   },
 
   // Carousel
+  // SCRUM-208: explicit height so the horizontal FlatList never collapses.
+  carousel: {
+    height: CARD_H,
+    flexGrow: 0,
+  },
   carouselContent: {
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
   },
+  // SCRUM-208: section label above the carousel ("Cocktail of the Day").
+  cotdLabelRow: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  cotdLabel: {
+    ...Typography.label,
+    color: Colors.accent,
+    letterSpacing: 1.2,
+  },
   featuredCard: {
     width: CARD_W,
-    height: SCREEN_H * 0.36,
+    height: CARD_H,
     borderRadius: Radius.lg,
     overflow: 'hidden',
     backgroundColor: Colors.surfaceInput,
