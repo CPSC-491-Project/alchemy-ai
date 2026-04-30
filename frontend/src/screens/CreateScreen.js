@@ -3,7 +3,7 @@
 // Quick Style pills, and "Make This Cocktail" CTA.
 // Design tokens from src/theme/index.js
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import {
@@ -140,6 +140,13 @@ export default function CreateScreen({ navigation }) {
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeStyle, setActiveStyle] = useState('Strong');
+
+  const filteredCocktails = useMemo(() => {
+    const matches = PARTY_COCKTAILS.filter(
+      (c) => c.style.toLowerCase() === activeStyle.toLowerCase()
+    );
+    return matches.length > 0 ? matches : PARTY_COCKTAILS;
+  }, [activeStyle]);
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatRef = useRef(null);
 
@@ -407,25 +414,19 @@ export default function CreateScreen({ navigation }) {
     if (scrollTimer.current) clearTimeout(scrollTimer.current);
     scrollTimer.current = setTimeout(() => {
       const index = Math.round(offset / (CARD_W + Spacing.sm));
-      setActiveIndex(Math.max(0, Math.min(index, PARTY_COCKTAILS.length - 1)));
+      setActiveIndex(Math.max(0, Math.min(index, filteredCocktails.length - 1)));
     }, 50);
+  }, [filteredCocktails]);
+
+  const handleStylePress = useCallback((style) => {
+    setActiveStyle(style);
+    setActiveIndex(0);
+    if (flatRef.current) {
+      flatRef.current.scrollToOffset({ offset: 0, animated: true });
+    }
   }, []);
 
-  const handleStylePress = useCallback(
-    (style) => {
-      setActiveStyle(style);
-      // Filter to the first cocktail matching this style
-      const idx = PARTY_COCKTAILS.findIndex(
-        (c) => c.style.toLowerCase() === style.toLowerCase()
-      );
-      if (idx !== -1 && flatRef.current) {
-        flatRef.current.scrollToIndex({ index: idx, animated: true });
-      }
-    },
-    []
-  );
-
-  const currentCocktail = PARTY_COCKTAILS[activeIndex];
+  const currentCocktail = filteredCocktails[activeIndex] ?? filteredCocktails[0];
 
   // Font guard — must render null until fonts load or web shows blank screen
   if (!fontsLoaded) return null;
@@ -458,7 +459,7 @@ export default function CreateScreen({ navigation }) {
       {/* ── Swipeable card carousel ── */}
       <Animated.FlatList
         ref={flatRef}
-        data={PARTY_COCKTAILS}
+        data={filteredCocktails}
         keyExtractor={(item) => item.id}
         horizontal
         pagingEnabled
@@ -479,7 +480,7 @@ export default function CreateScreen({ navigation }) {
 
       {/* ── Dot indicators ── */}
       <View style={styles.dotsRow}>
-        {PARTY_COCKTAILS.map((_, i) => (
+        {filteredCocktails.map((_, i) => (
           <View
             key={i}
             style={[styles.dot, i === activeIndex && styles.dotActive]}
