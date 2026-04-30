@@ -14,6 +14,7 @@ import {
   FlatList,
   Dimensions,
   StatusBar,
+  ScrollView,
   ImageBackground,
   Image,
   Animated,
@@ -22,6 +23,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +35,10 @@ import { useMixer } from '../contexts/MixerContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CARD_W = SCREEN_W - Spacing.lg * 2;
+// SCRUM-208: explicit card height shared between the FlatList container and
+// the card itself. Without this, the horizontal carousel can collapse on
+// certain devices/layouts and the card gets clipped to a thin sliver.
+const CARD_H = SCREEN_H * 0.36;
 
 // ── Mock cocktails ──────────────────────────────────────────────────────────
 const PARTY_COCKTAILS = [
@@ -95,6 +101,18 @@ const PARTY_COCKTAILS = [
 
 const QUICK_STYLES = ['Mocktail', 'Strong', 'Classic', 'Citrus', 'Fresh'];
 
+// SCRUM-208: Fisher–Yates shuffle, returns the first `count` items.
+// Used to pick 3 random "Cocktail of the Day" picks from PARTY_COCKTAILS
+// on each mount (app reload / hot reload re-rolls the selection).
+const pickRandom = (arr, count) => {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+};
+
 // ── Tag Pill ────────────────────────────────────────────────────────────────
 const TagPill = ({ label }) => (
   <View style={styles.tagPill}>
@@ -130,6 +148,50 @@ const CocktailCard = ({ item }) => (
   </View>
 );
 
+// SCRUM-208: small "Cocktail of the Day" card. Shown 3-up in a row,
+// each card directly navigates to RecipeDetail on tap. Replaces the
+// single swipeable hero card.
+const CocktailMiniCard = ({ item, onPress }) => (
+  <TouchableOpacity
+    style={styles.miniCard}
+    activeOpacity={0.85}
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={`View details for ${item.name}`}
+  >
+    <Image
+      source={{ uri: item.image }}
+      style={styles.miniCardImage}
+      resizeMode="cover"
+    />
+    <View style={styles.miniCardInfo}>
+      <Text style={styles.miniCardName} numberOfLines={1}>
+        {item.name}
+      </Text>
+      <View style={styles.miniCardTagRow}>
+        {item.tags.slice(0, 2).map((t) => (
+          <View key={t} style={styles.miniTagPill}>
+            <Text style={styles.miniTagPillText} numberOfLines={1}>
+              {t.toUpperCase()}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.miniStarRow}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Ionicons
+            key={i}
+            name="star-outline"
+            size={11}
+            color={Colors.textHint}
+            style={{ marginRight: 2 }}
+          />
+        ))}
+      </View>
+    </View>
+  </TouchableOpacity>
+);
+
 // ── Main Screen ─────────────────────────────────────────────────────────────
 export default function CreateScreen({ navigation }) {
   const [fontsLoaded] = useFonts({
@@ -140,6 +202,16 @@ export default function CreateScreen({ navigation }) {
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeStyle, setActiveStyle] = useState('Strong');
+  // SCRUM-208: pick 3 random cocktails from PARTY_COCKTAILS once per mount.
+  // Lazy initializer ensures the shuffle runs exactly once when the screen
+  // mounts (app reload / hot reload re-rolls); useMemo doesn't guarantee a
+  // single computation per mount.
+  const [featuredCocktails] = useState(() => pickRandom(PARTY_COCKTAILS, 3));
+  // SCRUM-208: on Expo Web, flex:1 doesn't always propagate a height through
+  // React Navigation's container chain, so the outer ScrollView never gets a
+  // constrained height and won't engage. Bind the screen height explicitly on
+  // web. useWindowDimensions updates on viewport resize.
+  const { height: viewportHeight } = useWindowDimensions();
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatRef = useRef(null);
 
@@ -407,32 +479,49 @@ export default function CreateScreen({ navigation }) {
     if (scrollTimer.current) clearTimeout(scrollTimer.current);
     scrollTimer.current = setTimeout(() => {
       const index = Math.round(offset / (CARD_W + Spacing.sm));
-      setActiveIndex(Math.max(0, Math.min(index, PARTY_COCKTAILS.length - 1)));
+      setActiveIndex(Math.max(0, Math.min(index, featuredCocktails.length - 1)));
     }, 50);
-  }, []);
+  }, [featuredCocktails.length]);
 
   const handleStylePress = useCallback(
     (style) => {
       setActiveStyle(style);
-      // Filter to the first cocktail matching this style
-      const idx = PARTY_COCKTAILS.findIndex(
+      // Filter to the first cocktail matching this style (within the random
+      // featured set; falls back to the first card if no match this reload).
+      const idx = featuredCocktails.findIndex(
         (c) => c.style.toLowerCase() === style.toLowerCase()
       );
       if (idx !== -1 && flatRef.current) {
         flatRef.current.scrollToIndex({ index: idx, animated: true });
       }
     },
-    []
+    [featuredCocktails]
   );
 
-  const currentCocktail = PARTY_COCKTAILS[activeIndex];
+  const currentCocktail = featuredCocktails[activeIndex];
 
   // Font guard — must render null until fonts load or web shows blank screen
   if (!fontsLoaded) return null;
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        // SCRUM-208: web-only height bind — see comment on viewportHeight.
+        Platform.OS === 'web' && { height: viewportHeight },
+      ]}
+    >
       <StatusBar barStyle="light-content" />
+
+      {/* SCRUM-208: ScrollView wraps the page body so users can scroll
+          past the carousel to reach Mixer Space and Quick Style on
+          smaller viewports. Modals stay siblings (overlays) and
+          shouldn't scroll with the body. */}
+      <ScrollView
+        style={styles.scrollArea}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
 
       {/* ── Header ── */}
       <View style={styles.header}>
@@ -455,34 +544,25 @@ export default function CreateScreen({ navigation }) {
         <Text style={styles.partyLine2}>MODE</Text>
       </View>
 
-      {/* ── Swipeable card carousel ── */}
-      <Animated.FlatList
-        ref={flatRef}
-        data={PARTY_COCKTAILS}
-        keyExtractor={(item) => item.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={CARD_W + Spacing.sm}
-        decelerationRate="fast"
-        contentContainerStyle={styles.carouselContent}
-        onScroll={(e) => {
-          Animated.event(
-            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: false }
-          )(e);
-          onScroll(e);
-        }}
-        scrollEventThrottle={16}
-        renderItem={({ item }) => <CocktailCard item={item} />}
-      />
+      {/* ── SCRUM-208: section label above the carousel ── */}
+      <View style={styles.cotdLabelRow}>
+        <Text style={styles.cotdLabel}>COCKTAIL OF THE DAY</Text>
+      </View>
 
-      {/* ── Dot indicators ── */}
-      <View style={styles.dotsRow}>
-        {PARTY_COCKTAILS.map((_, i) => (
-          <View
-            key={i}
-            style={[styles.dot, i === activeIndex && styles.dotActive]}
+      {/* ── SCRUM-208: 3-up Cocktail of the Day mini cards ──
+          Static row of 3 random featured cocktails. Each card is
+          tappable and navigates straight to RecipeDetail. Replaces
+          the previous swipe-carousel + dot indicators. */}
+      <View style={styles.miniCardRow}>
+        {featuredCocktails.map((item) => (
+          <CocktailMiniCard
+            key={item.id}
+            item={item}
+            onPress={() =>
+              (navigation.getParent() ?? navigation).navigate('RecipeDetail', {
+                cocktail: item,
+              })
+            }
           />
         ))}
       </View>
@@ -823,6 +903,7 @@ export default function CreateScreen({ navigation }) {
           </>
         ) : null}
       </View>
+      </ScrollView>
 
       {/* ── SCRUM-198: Manual Ingredient Add Modal ──
           Bottom-sheet form mirroring CabinetScreen's add modal so the UX
@@ -1130,6 +1211,15 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 50 : 32,
   },
 
+  // SCRUM-208: ScrollView wrapper so the page body scrolls past the tab bar.
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    // Extra room at the bottom so Quick Style isn't hidden behind the tab bar.
+    paddingBottom: 120,
+  },
+
   // Header
   header: {
     flexDirection: 'row',
@@ -1195,13 +1285,84 @@ const styles = StyleSheet.create({
   },
 
   // Carousel
+  // SCRUM-208: explicit height so the horizontal FlatList never collapses.
+  carousel: {
+    height: CARD_H,
+    flexGrow: 0,
+  },
   carouselContent: {
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
   },
+  // SCRUM-208: section label above the carousel ("Cocktail of the Day").
+  cotdLabelRow: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  cotdLabel: {
+    ...Typography.label,
+    color: Colors.accent,
+    letterSpacing: 1.2,
+  },
+
+  // SCRUM-208: 3-up mini card row replacing the swipe carousel.
+  miniCardRow: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  miniCard: {
+    flex: 1,
+    height: 200,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    backgroundColor: Colors.surfaceInput,
+    borderWidth: 1,
+    borderColor: `${Colors.accent}30`,
+  },
+  miniCardImage: {
+    width: '100%',
+    height: 96,
+  },
+  miniCardInfo: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    justifyContent: 'space-between',
+  },
+  miniCardName: {
+    fontFamily: 'CormorantGaramond_300Light',
+    fontSize: 16,
+    color: Colors.textPrimary,
+    letterSpacing: 0.5,
+  },
+  miniCardTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginVertical: 2,
+  },
+  miniTagPill: {
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  miniTagPillText: {
+    fontSize: 9,
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    fontFamily: 'DMSans_500Medium',
+  },
+  miniStarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   featuredCard: {
     width: CARD_W,
-    height: SCREEN_H * 0.36,
+    height: CARD_H,
     borderRadius: Radius.lg,
     overflow: 'hidden',
     backgroundColor: Colors.surfaceInput,
