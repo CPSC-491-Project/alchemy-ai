@@ -27,6 +27,7 @@ import {
   ActivityIndicator,
   Animated,
   Modal,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
@@ -179,6 +180,16 @@ export default function RecipeDetailScreen({ navigation, route }) {
     setIsFavorited((prev) => !prev);
   };
 
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Check out this cocktail: ${passedCocktail.name} — Try it on Alchemy AI!`,
+      });
+    } catch (_) {
+      // user dismissed share sheet — no action needed
+    }
+  };
+
   // ── Fetch full detail when passed a partial record ───────────────
   useEffect(() => {
     if (!isPartial) return;
@@ -300,6 +311,17 @@ export default function RecipeDetailScreen({ navigation, route }) {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Text style={styles.backArrow}>←</Text>
+          </TouchableOpacity>
+
+          {/* Share button — top right, left of heart */}
+          <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={handleShare}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Share cocktail"
+          >
+            <Ionicons name="share-outline" size={22} color="#C9A84C" />
           </TouchableOpacity>
 
           {/* SCRUM-200: Heart button — top right */}
@@ -553,6 +575,19 @@ const styles = StyleSheet.create({
     position: 'absolute', top: Spacing.md, left: Spacing.lg, zIndex: 10,
   },
   backArrow: { color: Colors.accent, fontSize: 22 },
+
+  shareBtn: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.lg + 48,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // SCRUM-200: heart button — top right of hero
   heartBtn: {
