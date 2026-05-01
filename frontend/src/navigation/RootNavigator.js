@@ -19,6 +19,7 @@ import RecipeDetailScreen from '../screens/RecipeDetailScreen';
 import CabinetScreen from '../screens/CabinetScreen';
 import ScanScreen from '../screens/ScanScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import PartyModeScreen from '../screens/PartyModeScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -57,6 +58,11 @@ export default function RootNavigator({ user }) {
               options={{ animation: 'slide_from_right' }}
             />
           )}
+          <Stack.Screen
+            name="PartyMode"
+            component={PartyModeScreen}
+            options={{ animation: 'slide_from_bottom' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </MixerProvider>
