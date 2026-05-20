@@ -27,6 +27,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { scanImage, addConfirmedIngredients } from '../services/scanService';
+import EventBus from '../utils/EventBus';
 import { useMixer } from '../contexts/MixerContext';
 
 const S = {
@@ -151,6 +152,7 @@ export default function ScanScreen({ navigation }) {
       const summary = await addConfirmedIngredients(selectedCandidates);
       setDoneSummary(summary);
       setScreenState(S.DONE);
+      EventBus.emit('INGREDIENTS_UPDATED', { source: 'scan' });
     } catch (err) {
       // addConfirmedIngredients shouldn't throw at the outer level (per-item
       // failures are caught internally), but if something else blows up

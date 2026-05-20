@@ -16,7 +16,7 @@
 //
 // Implements: FR-21, FR-22, FR-23, NFR-17, NFR-18, NFR-19
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   Modal, ActivityIndicator, StyleSheet, SafeAreaView,
@@ -28,6 +28,7 @@ import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans'
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Opacity } from '../theme/index';
 import { getCabinet, addIngredient, removeIngredient } from '../services/cabinetService';
+import EventBus from '../utils/EventBus';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -82,6 +83,10 @@ export default function CabinetScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { loadCabinet(); }, []));
 
+  useEffect(() => {
+    return EventBus.subscribe('INGREDIENTS_UPDATED', loadCabinet);
+  }, []);
+
   async function loadCabinet() {
     try {
       setError(null);
@@ -123,6 +128,7 @@ export default function CabinetScreen({ navigation }) {
     if (usingMock) return;
     try {
       await removeIngredient(id);
+      EventBus.emit('INGREDIENTS_UPDATED', { source: 'cabinet' });
     } catch (err) {
       Alert.alert('Error', err.message || 'Could not remove ingredient.');
       loadCabinet();
@@ -145,6 +151,7 @@ export default function CabinetScreen({ navigation }) {
       } else {
         const created = await addIngredient(payload);
         setIngredients((prev) => [created, ...prev]);
+        EventBus.emit('INGREDIENTS_UPDATED', { source: 'cabinet' });
       }
       setModalVisible(false);
     } catch (err) {
