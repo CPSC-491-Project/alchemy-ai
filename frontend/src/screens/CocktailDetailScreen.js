@@ -30,7 +30,7 @@ import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormora
 import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { getCocktailById } from '../services/cocktailService';
-import { getCabinet } from '../services/cabinetService';
+import { getCabinet, addIngredient } from '../services/cabinetService';
 import { compareCabinetToDrink } from '../utils/cabinetCoverage';
 import { useAuth } from '../context/AuthContext';
 
@@ -56,6 +56,7 @@ export default function CocktailDetailScreen({ route, navigation }) {
   const [scanResult, setScanResult] = useState(null); // { matched, missing, matchedCount, ingredientCount, matchPercentage }
   const [scanError, setScanError] = useState(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [addingAll, setAddingAll] = useState(false);
 
   useEffect(() => {
     getCocktailById(id)
@@ -95,22 +96,34 @@ export default function CocktailDetailScreen({ route, navigation }) {
     setScanError(null);
   }
 
-  // SCRUM-209: Mirrors handleAddAllToCabinet from RecipeDetailScreen so the
-  // Search/Favorites flow exposes the same action as the Home/Create flow.
-  // Currently a confirmation stub — full persistence to /api/cabinet is
-  // tracked separately. Web and native paths use platform-appropriate alerts.
-  function handleAddAllToCabinet() {
+  // SCRUM-221: Persist all ingredients to /api/cabinet via addIngredient().
+  // Uses Promise.allSettled so a single failure doesn't abort the batch.
+  async function handleAddAllToCabinet() {
     if (!cocktail) return;
-    const names = (cocktail.ingredients || [])
-      .map((i) => i.name)
-      .filter(Boolean)
-      .join(', ');
-    const message = names || cocktail.name;
-    if (Platform.OS === 'web') {
-      // eslint-disable-next-line no-alert
-      window.alert('Added to Cabinet\n' + message);
-    } else {
-      Alert.alert('Added to Cabinet', message);
+    if (isGuest) {
+      Alert.alert('Sign in required', 'Sign in to save ingredients to your cabinet');
+      return;
+    }
+    const ingredients = (cocktail.ingredients || []).filter((i) => i.name);
+    if (ingredients.length === 0) return;
+    setAddingAll(true);
+    try {
+      const results = await Promise.allSettled(
+        ingredients.map((ing) =>
+          addIngredient({ name: ing.name, category: 'spirit', quantity: ing.measure || '' })
+        )
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed    = results.filter((r) => r.status === 'rejected').length;
+      if (failed === 0) {
+        Alert.alert('Added!', `${succeeded} ingredient${succeeded !== 1 ? 's' : ''} added to your cabinet!`);
+      } else if (succeeded > 0) {
+        Alert.alert('Partial Success', `${succeeded} added, ${failed} could not be saved. Try again.`);
+      } else {
+        Alert.alert('Error', 'Could not add ingredients. Please check your connection.');
+      }
+    } finally {
+      setAddingAll(false);
     }
   }
 
@@ -202,15 +215,20 @@ export default function CocktailDetailScreen({ route, navigation }) {
           </>
         )}
 
-        {/* ── SCRUM-209: Add All to Cabinet ── */}
+        {/* ── SCRUM-221: Add All to Cabinet ── */}
         <TouchableOpacity
-          style={styles.ctaButton}
+          style={[styles.ctaButton, { opacity: addingAll ? 0.7 : 1 }]}
           onPress={handleAddAllToCabinet}
+          disabled={addingAll}
           accessibilityRole="button"
           accessibilityLabel="Add all ingredients to cabinet"
           activeOpacity={0.85}
         >
-          <Text style={styles.ctaLabel}>Add All to Cabinet</Text>
+          {addingAll ? (
+            <ActivityIndicator color="#C9A84C" />
+          ) : (
+            <Text style={styles.ctaLabel}>Add All to Cabinet</Text>
+          )}
         </TouchableOpacity>
 
         {/* ── SCRUM-205: Scan My Cabinet ── */}
