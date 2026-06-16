@@ -56,6 +56,14 @@ const MOCK_INGREDIENTS = [
   { id: 'mock-11', name: 'Mint',         category: 'garnish', quantity: null,  unit: null  },
 ];
 
+function getStockLevel(ingredient) {
+  const q = (ingredient.quantity || '').toString().toLowerCase().trim();
+  if (!q) return 'in';
+  if (/empty|out|none|finished|0$|zero/.test(q)) return 'out';
+  if (/low|little|almost|half|quarter|few|running/.test(q)) return 'low';
+  return 'in';
+}
+
 export default function CabinetScreen({ navigation }) {
   // FIX 1: Font loading — MUST be first hook.
   // Screens using Cormorant/DMSans without useFonts crash silently on web
@@ -223,15 +231,21 @@ export default function CabinetScreen({ navigation }) {
           data={filtered}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
-            const inStock = true;
+            const stockLevel = getStockLevel(item);
+            const badgeStyle = stockLevel === 'out' ? styles.stockBadgeOut : stockLevel === 'low' ? styles.stockBadgeLow : styles.stockBadgeIn;
+            const badgeTextStyle = stockLevel === 'out' ? styles.stockBadgeTextOut : stockLevel === 'low' ? styles.stockBadgeLowText : styles.stockBadgeTextIn;
+            const badgeLabel = stockLevel === 'out' ? 'Out of Stock' : stockLevel === 'low' ? 'Low Stock' : 'In Stock';
             return (
-              <TouchableOpacity style={styles.tile} onLongPress={() => confirmDelete(item)} accessibilityRole="button" accessibilityLabel={`${item.name}, In Stock. Long press to remove.`} activeOpacity={0.75}>
+              <TouchableOpacity style={styles.tile} onLongPress={() => confirmDelete(item)} accessibilityRole="button" accessibilityLabel={`${item.name}, ${badgeLabel}. Long press to remove.`} activeOpacity={0.75}>
                 <View style={styles.tileIconCircle}>
                   <Text style={styles.tileIcon}>{CATEGORY_ICON[item.category] ?? '🍾'}</Text>
                 </View>
                 <Text style={styles.tileName} numberOfLines={2}>{item.name}</Text>
-                <View style={[styles.stockBadge, styles.stockBadgeIn]}>
-                  <Text style={[styles.stockBadgeText, styles.stockBadgeTextIn]}>In Stock</Text>
+                {item.quantity ? (
+                  <Text style={styles.ingredientQuantity}>{item.quantity}</Text>
+                ) : null}
+                <View style={[styles.stockBadge, badgeStyle]}>
+                  <Text style={[styles.stockBadgeText, badgeTextStyle]}>{badgeLabel}</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -362,4 +376,7 @@ const styles = StyleSheet.create({
   cancelText:        { ...Typography.labelMedium, color: Colors.textSecondary },
   confirmButton:     { flex: 2, padding: Spacing.md, borderRadius: Radius.md, backgroundColor: Colors.accent, alignItems: 'center' },
   confirmText:       { ...Typography.labelMedium, color: Colors.background },
+  stockBadgeLow:     { backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: '#C9A84C', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  stockBadgeLowText: { fontSize: 10, color: '#C9A84C', fontFamily: 'DMSans_500Medium' },
+  ingredientQuantity:{ fontSize: 11, color: '#888888', fontFamily: 'DMSans_400Regular', marginTop: 2 },
 });
