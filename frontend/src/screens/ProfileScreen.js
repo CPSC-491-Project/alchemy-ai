@@ -1,13 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal,
-  ScrollView, Switch, SafeAreaView, Pressable, ActivityIndicator,
+  ScrollView, Switch, SafeAreaView, Pressable, ActivityIndicator, Animated,
 } from 'react-native';
 import { useFonts, CormorantGaramond_300Light } from '@expo-google-fonts/cormorant-garamond';
 import { DMSans_400Regular } from '@expo-google-fonts/dm-sans';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { updateUserPreferences } from '../services/userService';
+import { updateUserPreferences, fetchUserProfile } from '../services/userService';
 
 const BG        = '#0D0D0D';
 const GOLD      = '#C9A84C';
@@ -34,7 +34,7 @@ function BottomModal({ visible, onClose, title, children }) {
 }
 
 export default function ProfileScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const [fontsLoaded] = useFonts({ CormorantGaramond_300Light, DMSans_400Regular });
 
   const [openModal, setOpenModal]     = useState(null);
@@ -43,11 +43,53 @@ export default function ProfileScreen({ navigation }) {
   const [unit, setUnit]               = useState('oz');
   const [isPublic, setIsPublic]       = useState(true);
   const [saving, setSaving]           = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [fetchError, setFetchError]   = useState(false);
+  const [notifPush, setNotifPush]     = useState(false);
+  const [notifRecs, setNotifRecs]     = useState(false);
+  const [notifCabinet, setNotifCabinet] = useState(false);
 
   const getToken = useCallback(async () => {
     if (!user) return null;
     return user.getIdToken();
   }, [user]);
+
+  const shimmerAnim = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    if (!loading) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 0.8, duration: 600, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [loading, shimmerAnim]);
+
+  const fetchPreferences = useCallback(async () => {
+    if (isGuest) return;
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const profile = await fetchUserProfile(token);
+      setSavedFlavors(profile.flavors ?? []);
+      setFlavorDraft(profile.flavors ?? []);
+      setUnit(profile.unit ?? 'oz');
+      setIsPublic(profile.isPublic ?? true);
+    } catch (e) {
+      setFetchError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [isGuest, getToken]);
+
+  useEffect(() => {
+    fetchPreferences();
+  }, [fetchPreferences]);
 
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Guest';
   const initials = displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
@@ -132,14 +174,29 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         <Text style={styles.sectionLabel}>PREFERENCES</Text>
-        <View style={styles.card}>
-          <Row label="Ingredient Cabinet"      value="View my cabinet"                 onPress={goToCabinet} />
-          <Row label="Flavor Preferences"     value={flavorDisplay}                   onPress={openFlavor}  />
-          <Row label="Units & Measurements"   value={unit === 'oz' ? 'oz' : 'ml'}     onPress={openUnits}   />
-          <Row label="Notifications"          onPress={() => {}}                       />
-          <Row label="Privacy"                value={isPublic ? 'Public' : 'Private'} onPress={openPrivacy} />
-          <Row label="Subscription & Billing" onPress={openBilling}                   isLast />
-        </View>
+        {loading ? (
+          <View style={styles.card}>
+            {[0, 1, 2, 3].map((i) => (
+              <Animated.View key={i} style={[styles.shimmerBlock, { opacity: shimmerAnim }]} />
+            ))}
+          </View>
+        ) : fetchError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Could not load preferences</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={fetchPreferences}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Row label="Ingredient Cabinet"      value="View my cabinet"                 onPress={goToCabinet} />
+            <Row label="Flavor Preferences"     value={flavorDisplay}                   onPress={openFlavor}  />
+            <Row label="Units & Measurements"   value={unit === 'oz' ? 'oz' : 'ml'}     onPress={openUnits}   />
+            <Row label="Notifications"          onPress={() => setOpenModal('notifications')} />
+            <Row label="Privacy"                value={isPublic ? 'Public' : 'Private'} onPress={openPrivacy} />
+            <Row label="Subscription & Billing" onPress={openBilling}                   isLast />
+          </View>
+        )}
 
         <Text style={styles.version}>App Version 1.0.0</Text>
       </ScrollView>
@@ -203,6 +260,28 @@ export default function ProfileScreen({ navigation }) {
         </View>
         <TouchableOpacity style={styles.saveBtn} onPress={closeModal}>
           <Text style={styles.saveBtnText}>Done</Text>
+        </TouchableOpacity>
+      </BottomModal>
+
+      <BottomModal visible={openModal === 'notifications'} onClose={closeModal} title="Notifications">
+        <View style={[styles.toggleRow, styles.notifRow]}>
+          <Text style={styles.toggleLabel}>Push Notifications</Text>
+          <Switch value={notifPush} onValueChange={setNotifPush} trackColor={{ true: GOLD }} thumbColor={TEXT_PRI} />
+        </View>
+        <View style={[styles.toggleRow, styles.notifRow]}>
+          <Text style={styles.toggleLabel}>Cocktail Recommendations</Text>
+          <Switch value={notifRecs} onValueChange={setNotifRecs} trackColor={{ true: GOLD }} thumbColor={TEXT_PRI} />
+        </View>
+        <View style={[styles.toggleRow, styles.notifRow]}>
+          <Text style={styles.toggleLabel}>Cabinet Reminders</Text>
+          <Switch value={notifCabinet} onValueChange={setNotifCabinet} trackColor={{ true: GOLD }} thumbColor={TEXT_PRI} />
+        </View>
+        <TouchableOpacity
+          style={styles.saveBtn}
+          onPress={async () => { await savePreferences({ notifPush, notifRecs, notifCabinet }); closeModal(); }}
+          disabled={saving}
+        >
+          {saving ? <ActivityIndicator color={BG} /> : <Text style={styles.saveBtnText}>Save Preferences</Text>}
         </TouchableOpacity>
       </BottomModal>
 
@@ -274,4 +353,10 @@ const styles = StyleSheet.create({
   saveBtnText:      { fontFamily: 'DMSans_400Regular', fontSize: 15, color: BG, fontWeight: '600', letterSpacing: 0.5 },
   ghostBtn:         { borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   ghostBtnText:     { fontFamily: 'DMSans_400Regular', fontSize: 14, color: TEXT_SEC },
+  shimmerBlock:     { height: 52, borderRadius: 10, backgroundColor: '#2A2A2A', marginHorizontal: 16, marginBottom: 8 },
+  errorBox:         { alignItems: 'center', paddingVertical: 32, marginBottom: 28 },
+  errorText:        { fontFamily: 'DMSans_400Regular', fontSize: 14, color: '#888888', marginBottom: 16 },
+  retryBtn:         { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: GOLD },
+  retryBtnText:     { fontFamily: 'DMSans_400Regular', fontSize: 14, color: GOLD },
+  notifRow:         { marginBottom: 12 },
 });
